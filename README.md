@@ -13,7 +13,9 @@ Guides your team through a complete feature lifecycle:
 - [Installation](#installation)
 - [Quick Start](#quick-start)
 - [Full Workflow](#full-workflow)
-- [Multi-Service Projects](#multi-service-projects)
+- [Operations Guide](#operations-guide)
+- [PO/BA Guide](#poba-guide)
+- [Multi-Repo / Umbrella Setup](#multi-repo--umbrella-setup)
 - [Figma Design System Integration](#figma-design-system-integration)
 - [Platform-Adaptive Generation](#platform-adaptive-generation)
 - [Stack Modules](#stack-modules)
@@ -118,6 +120,11 @@ Phase 2: PRD
             immediately                    → --resume → apply + bump version
 
 Phase 3: Spec & Design
+  /generate-design-spec ─────────────────→ specs/design-spec/{domain}/{TICKET-ID}-design-spec-{platform}.md
+                         (FE/App only)       Screen specs, component inventory, AC-UI
+                              │
+              [Designer review + PO sign-off]
+                              │
   /generate-bdd ─────────────────────────→ specs/bdd/{domain}/{UC-ID}.feature
   /review-context {feature} ────────────→ .agent/review/{uc-id}-review-bdd-findings.yaml
                               │
@@ -153,11 +160,17 @@ Phase 5: Test
 | **0. Setup** *(one-time)* | Tech Lead | `/setup-ai-first`, `/sync-figma-*` | Config files, component catalog |
 | **1. Discovery** | PO + AI | `/define-product` | `specs/product-definition/{TICKET-ID}-{slug}.md` |
 | **2. PRD** | AI → SA/PO review | `/generate-prd`, `/refine-prd`, `/review-context` | `specs/prd/{domain}/{TICKET-ID}-{slug}.md` |
+| **2b. Design Spec** *(FE/App only)* | AI → Designer/PO sign-off | `/generate-design-spec` | `specs/design-spec/{domain}/{TICKET-ID}-design-spec-{platform}.md` |
 | **3. BDD Spec** | AI → SA/Dev review | `/generate-bdd`, `/review-context` | `specs/bdd/{domain}/{UC-ID}.feature` |
 | **4. Tech Design** | AI → SA/Lead review | `/generate-tech-docs`, `/review-tech-docs` | `tech-docs/{domain}/{UC-ID}-tech-design.md` |
 | **5. Code** | AI → Dev review | `/generate-code`, `/review-code` | `src/...` |
 | **6. Tests** | AI → CI | `/generate-tests`, `/run-tests` | `src/test/...` |
 | **7. Trace** | Tech Lead | `/validate-traces` | Coverage matrix + drift report |
+
+> **PRD is platform-agnostic (Option C pattern):** One PRD serves all platforms. PRD describes business outcomes only — no UI details, no API specifics.
+> FE/App teams read PRD → generate Design Spec (Phase 2b) → generate BDD.
+> BE teams read PRD directly → generate BDD (skip Phase 2b).
+> Adding a new platform later requires no PRD changes — just set up its umbrella and run `/generate-bdd`.
 
 ---
 
@@ -409,153 +422,231 @@ Reads all `.trace/{UC-ID}.tsv` files in the domain and reports:
 
 ---
 
-## Multi-Service Projects
+## Operations Guide
 
-### Setup
+For day-to-day operations including role-based workflows, git submodule procedures, and common scenarios, see **[OPERATIONS.md](OPERATIONS.md)**.
 
-In `.agent/project-context.yaml`, declare each service:
-
-```yaml
-services:
-  - name: web-admin
-    module: react
-    description: Admin dashboard (React SPA)
-  - name: api-backend
-    module: java-spring
-    description: REST API backend
-  - name: app-mobile
-    module: flutter
-    description: Customer mobile app
-```
-
-### How it works
-
-Once `services` is configured, every command in the pipeline becomes service-aware:
-
-| Command | Service context |
-|---------|----------------|
-| `/define-product` | Asks "Which service is this feature for?" |
-| `/generate-prd` | Reads service from product-definition metadata |
-| `/generate-bdd` | Reads service from PRD; writes to `specs/bdd/{domain}/{service}/{UC-ID}.feature` |
-| `/generate-tech-docs` | Reads service from `.feature` header; writes to `tech-docs/{domain}/{service}/` |
-| `/generate-code` | Reads service from `.feature` header; loads correct component catalog |
-| `/generate-tests` | Reads service from `.feature` header; uses platform-correct test framework |
-
-### Service context tracing
-
-Service identity is carried through artifacts as trace headers:
-
-```gherkin
-# @trace.service: web-admin
-# @trace.module: react
-```
-
-```markdown
-@trace.service: web-admin
-@trace.module: react
-```
-
-This ensures downstream commands always know which service they're generating for, even when files are opened independently.
-
-### Orchestration in multi-service projects
-
-When `/generate-bdd` detects a large PRD (> 3 UCs or > 300 lines), it automatically spawns sub-agents — one per UC. Each sub-agent receives the `active_service` and `active_module` in its context payload, so paths and platform vocabulary are always correct.
+Covers:
+- Setup per role: PO, FE/Web, BE, App
+- Full feature lifecycle with commands at each step
+- Git submodule: clone, update, commit 2-layer, troubleshooting
+- Common scenarios: PO-first, adding a platform later, PRD updates, domain key mismatch
 
 ---
 
-### Monorepo — Separate Workspaces per Service
+## Bug Flow — PO · Dev · Tester
 
-In teams where BE, Web, and Mobile are reviewed independently, having one person generate code for all services creates noise and makes PRs hard to review. The recommended pattern is to split each service into its own sub-directory — each developer opens Claude Code only in their service folder.
+For cross-role bug handling coordination, see **[BUG_FLOW.md](BUG_FLOW.md)**.
 
-#### Directory structure
+Covers all 6 bug cases with swimlane flows:
+- **Case 1** — Code bug (code ≠ BDD) → Dev fixes code
+- **Case 2** — BDD bug (BDD ≠ PRD) → Dev fixes BDD + code
+- **Case 3** — PRD ambiguity → PO clarifies → Dev cascades
+- **Case 4** — PRD change → PO updates → Dev re-implements
+- **Case 5** — Design Spec bug (UI ≠ Design Spec) → Designer/Dev
+- **Case 6** — Environment / data bug → DevOps / Dev
+- Communication templates: bug report, fix notification, PO clarify request
+- Close checklist for Dev + Tester + PO
+
+---
+
+## Tester / QA Guide
+
+For Testers and QA engineers, see **[TESTER_GUIDE.md](TESTER_GUIDE.md)**.
+
+Covers:
+- How to set up tester's agent using `spec-manifest.yaml` as entry point
+- How to read and understand the spec chain (PRD → BDD → Tech Docs) before testing
+- 6 real-world scenarios: new feature, PRD change mid-sprint, BE + Web same feature, missing BDD, regression after refactor, multi-service E2E
+- Bug reporting template with full spec context (PRD reference, BDD scenario, AC violated)
+- Bug classification by spec layer (PRD unclear vs BDD wrong vs code mismatch)
+
+---
+
+## Developer Guide
+
+For Developers (FE / BE / App), see **[DEV_GUIDE.md](DEV_GUIDE.md)**.
+
+Covers:
+- All commands available to dev with when to use each
+- Why BDD matters: executable spec, architecture driver, living documentation
+- Understanding the trace system (`@trace.module`, `@trace.domain`, `@trace.bdd`)
+- 8 real-world scenarios: receive new PRD, generate BDD per platform (BE vs FE vs App), PRD changes mid-sprint, bug fix flow, Design Spec handoff, umbrella submodule setup, validate traces before PR
+- Pre-PR checklist
+
+---
+
+## PO/BA Guide
+
+For Product Owners and Business Analysts, see **[PO_GUIDE.md](PO_GUIDE.md)**.
+
+Covers:
+- All commands available to PO/BA with when to use each
+- 10 real-world scenarios: new feature, design spec, PRD revision, requirements change, domain conflict, business dictionary update, handoff to dev team, and more
+- PRD writing rules: platform-agnostic AC, testable criteria, negative paths
+- Handoff checklist before notifying dev team
+
+---
+
+## Multi-Repo / Umbrella Setup
+
+For projects where multiple services live in separate git repos (microservices, multi-platform apps), the recommended pattern is an **umbrella repo** — a coordinator repo that contains each service repo as a git submodule.
+
+### Concept
 
 ```
-my-project/
-├── specs/                              ← PO/BA manages this (shared)
-│   ├── product-definition/
-│   ├── prd/
-│   ├── bdd/
-│   ├── tech-docs/
-│   └── domain-knowledge/
-│
-├── .agent/                             ← PO/BA plugin install (root)
-│   └── project-context.yaml           ← lists all services
-├── .claude/commands/                   ← PO/BA command shortcuts
-│
-├── backend/                            ← BE dev opens Claude Code here
-│   ├── CLAUDE.md                       ← BE-specific architecture
-│   ├── .agent/
-│   │   └── project-context.yaml       ← BE config, paths → ../specs/
-│   ├── .claude/commands/
-│   └── src/
-│
-├── web-admin/                          ← Web dev opens Claude Code here
-│   ├── CLAUDE.md
-│   ├── .agent/
-│   │   └── project-context.yaml       ← Web config, paths → ../specs/
-│   ├── .claude/commands/
-│   └── src/
-│
-└── app-mobile/                         ← Mobile dev opens Claude Code here
-    ├── CLAUDE.md
-    ├── .agent/
-    │   └── project-context.yaml       ← Mobile config, paths → ../specs/
-    ├── .claude/commands/
-    └── src/
+my-project-umbrella/          ← Agent opens here (umbrella)
+├── .agent/
+│   └── project-context.yaml  ← routing config
+├── my-project-specs/         ← submodule: PO's spec repo (PRD, design-spec)
+├── user-service/             ← submodule: BE microservice
+├── order-service/            ← submodule: BE microservice
+└── web-app/                  ← submodule: FE app
 ```
 
-#### Install — one command from project root
+The agent reads PRDs from the spec submodule and generates BDD/tech-docs/code into each service submodule based on the active domain.
+
+### Setup
+
+**Install framework at umbrella level** (do NOT install inside service submodules):
 
 ```bash
+# Example: web umbrella with one NextJS app reading from a spec submodule
 npx @anhth2/spec-driven-dev-plugin --init \
-  --services backend:java-spring,web-admin:react,app-mobile:flutter
+  --umbrella \
+  --spec-source free-trial-specs \
+  --services mass-product-web:nextjs
+
+# Example: BE umbrella with multiple microservices
+npx @anhth2/spec-driven-dev-plugin --init \
+  --umbrella \
+  --spec-source my-project-specs \
+  --services user:java-spring,order:java-spring,payment:golang
 ```
 
-This single command:
-- Installs the framework at **root** (PO/BA workspace)
-- Installs into **each service subfolder** (`backend/`, `web-admin/`, `app-mobile/`)
-- Generates a starter `.agent/project-context.yaml` in each location (paths pre-configured)
-- Creates `.claude/commands/` shortcuts in every workspace
+This installs the framework to `.agent/` at the umbrella root and generates a `project-context.yaml` with service routing configured.
 
-#### Per-service `project-context.yaml`
-
-Each service config points paths to the shared `specs/` folder at the root:
+### Generated project-context.yaml
 
 ```yaml
-# backend/.agent/project-context.yaml
-project:
-  name: My Project — Backend
-
-tech_stack:
-  language: Java 17
-  framework: Spring Boot 3.2
-  module: java-spring
+setup:
+  mode: umbrella
+  spec_source: "free-trial-specs"  # path to PO spec submodule
 
 paths:
-  specs_dir: ../specs/bdd
-  prd_dir: ../specs/prd
-  tech_docs_dir: ../specs/tech-docs
-  domain_knowledge_dir: ../specs/domain-knowledge
-  business_dictionary: ../specs/domain-knowledge/business-dictionary.md
-  core_entities: ../specs/domain-knowledge/core-entities.md
-  refinement_dir: ../specs/.review
-  product_definitions_dir: ../specs/product-definition
-  trace_dir: ../.trace
+  prd_dir:         "free-trial-specs/specs/prd"    # auto-derived from spec_source
+  design_spec_dir: "free-trial-specs/specs/design-spec"
+  # ... other spec paths also auto-derived
+
+services:                          # domain → service submodule routing
+  user:
+    path: "user-service"
+    module: "java-spring"
+    specs_dir: "user-service/specs/bdd"
+    tech_docs_dir: "user-service/specs/tech-docs"
+  order:
+    path: "order-service"
+    module: "java-spring"
+    specs_dir: "order-service/specs/bdd"
+    tech_docs_dir: "order-service/specs/tech-docs"
 ```
 
-Web and Mobile configs follow the same pattern with their respective `tech_stack.module`.
+### How routing works
 
-#### Who works where
+When you run a command (e.g., `/generate-bdd free-trial-specs/specs/prd/user/FEAT-01.md`):
+1. Context-loader detects domain = `user` from the PRD path
+2. Routes `specs_dir` → `user-service/specs/bdd`
+3. Routes `tech_docs_dir` → `user-service/specs/tech-docs`
+4. BDD and tech-docs are generated inside the correct service submodule
 
-| Role | Opens Claude Code at | Commands used |
-|------|---------------------|---------------|
-| PO / BA | `my-project/` (root) | `/define-product` `/generate-prd` `/refine-prd` `/review-context` `/generate-bdd` |
-| Tech Lead | `my-project/` (root) | `/generate-bdd` `/validate-traces` |
-| BE Dev | `my-project/backend/` | `/generate-tech-docs` `/generate-code` `/review-code` `/generate-tests` `/run-tests` |
-| Web Dev | `my-project/web-admin/` | `/generate-tech-docs` `/generate-code` `/review-code` `/generate-tests` `/run-tests` |
-| Mobile Dev | `my-project/app-mobile/` | `/generate-tech-docs` `/generate-code` `/review-code` `/generate-tests` `/run-tests` |
+**Key requirement:** PRD files must have `@trace.domain` in their frontmatter matching a key in the `services` config:
 
-Each developer's Claude Code session only sees their service's `project-context.yaml` — no accidental cross-service code generation. Each `/generate-code` run produces a separate branch and PR scoped to one service and one reviewer.
+```yaml
+# In PRD file frontmatter:
+@trace.domain: user      ← must match a services key
+@trace.id: FEAT-01
+@trace.status: approved  ← dev team should not generate BDD from draft PRDs
+```
+
+`/review-context` automatically validates this with a **P0 — Umbrella Routing Check** before running other checks. It catches missing `@trace.domain`, domain key mismatches, and draft status — warning the dev team before they run `/generate-bdd`.
+
+### File ownership by repo
+
+| File type | Where it lives | Who commits |
+|-----------|---------------|-------------|
+| PRD, Design Spec, Product Definition | Spec submodule (`my-project-specs/`) | PO's team |
+| BDD feature files | Each service submodule (`user-service/specs/bdd/`) | Dev team |
+| Tech docs | Each service submodule (`user-service/specs/tech-docs/`) | Dev team |
+| Code | Each service submodule (`user-service/src/`) | Dev team |
+
+### Committing generated files
+
+Generated files go inside service submodules → requires a two-layer commit:
+
+```bash
+# 1. Commit inside the service submodule
+cd user-service
+git add specs/bdd/user/FEAT-01.feature
+git commit -m "feat(FEAT-01): add BDD spec"
+git push
+
+# 2. Update submodule pointer in umbrella
+cd ..
+git add user-service
+git commit -m "chore: update user-service submodule pointer"
+git push
+```
+
+### Updating the spec submodule
+
+When PO pushes new PRDs or design specs, dev teams must update their spec submodule before generating:
+
+```bash
+# Pull latest PRDs from PO (run from umbrella repo)
+git submodule update --remote my-project-specs
+git add my-project-specs
+git commit -m "chore: update spec submodule to latest"
+git push
+```
+
+### PO starts before dev repos exist
+
+A common pattern: PO writes PRDs weeks before dev teams set up their umbrella repos. This works seamlessly because the spec repo is fully independent.
+
+**PO's workflow (no dev repos needed):**
+```bash
+# PO runs setup on their spec repo
+cd my-project-spec
+npx @anhth2/spec-driven-dev-plugin --init
+/setup-ai-first   # choose: 3. PO Spec repo
+
+# PO writes features — agent asks for domain list upfront
+/define-product
+/generate-prd       # PRD lands in specs/prd/{domain}/
+/generate-design-spec  # Design spec for FE/App
+```
+
+**Critical:** PO must define domain names before writing PRDs (prompted by `/setup-ai-first`) and ensure every PRD has `@trace.domain` set. Dev teams use these exact names as `services` keys in their umbrella config.
+
+**When dev team joins later:**
+1. Set up umbrella repo with spec repo as submodule
+2. Configure `services` keys to match PO's domain names
+3. Run `git submodule update --remote {spec-source}` to pull existing PRDs
+4. Run `/review-context {prd-file}` — P0 check verifies domain alignment
+5. If P0 passes → `/generate-bdd`, `/generate-tech-docs`, `/generate-code`
+
+### Multi-platform setup
+
+For a multi-platform project (PO + Web + BE + App), each platform has its own umbrella:
+
+```
+my-project-spec/   ← PO umbrella (npx ... --init)
+my-project-web/    ← Web umbrella (npx ... --init --umbrella --spec-source my-project-specs ...)
+my-project-be/     ← BE umbrella  (npx ... --init --umbrella --spec-source my-project-specs ...)
+my-project-app/    ← App umbrella (npx ... --init --umbrella --spec-source my-project-specs ...)
+```
+
+Each platform umbrella has its own `project-context.yaml` pointing PRD paths to the shared spec submodule.
 
 ---
 
@@ -713,7 +804,8 @@ Each module ships a `stack-profile.yaml` with framework-specific layer patterns,
 | `/review-context` | prd or feature file | `.agent/review/*-findings.yaml` | After PRD update; after generate-bdd |
 | `/review-context --fix` | prd or feature file | Applies all auto-fixable findings immediately | Dev quick-fix without Review Board |
 | `/review-context --resume` | prd or feature file | Applies accepted findings | After reviewing in Review Board |
-| `/generate-bdd` | prd file | `specs/bdd/{domain}/{slug}.feature` | After PRD approved |
+| `/generate-design-spec` | prd file | `specs/design-spec/{domain}/{TICKET-ID}-design-spec-{platform}.md` | FE/App: after PRD approved — before BDD |
+| `/generate-bdd` | prd file | `specs/bdd/{domain}/{slug}.feature` | After PRD approved (+ Design Spec sign-off for FE/App) |
 | `/generate-tech-docs` | feature file | `tech-docs/{domain}/{slug}-tech-design.md` | After BDD approved |
 | `/review-tech-docs` | tech-design file | `.agent/review/*-findings.yaml` | After generate-tech-docs |
 | `/review-tech-docs --resume` | tech-design file | Applies accepted findings | After reviewing in Review Board |
