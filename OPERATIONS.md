@@ -240,21 +240,24 @@ git submodule update --init --recursive
 PO (spec repo)                    Web/App dev (umbrella)     BE dev (umbrella)
 ─────────────────────────────────────────────────────────────────────────────
 /define-product
-/generate-prd ──────────────────→ pull spec submodule ←──── pull spec submodule
-/review-context --fix                    │                         │
-/generate-design-spec (web/app)          │                         │
-[Designer sign-off]                      │                         │
+/generate-prd
+/refine-prd ────────────────────→ (chờ)                   (chờ)
+/review-context --fix
+[set @trace.status: approved]
+/generate-design-spec (web/app)
+[Designer sign-off]
 push to spec repo ──────────────→ git submodule update ←─── git submodule update
                                          │                         │
                                  /review-context (P0 check)  /review-context (P0 check)
-                                 /generate-design-spec ──┐   /generate-bdd
-                                 [PO + Designer sign-off] │   /generate-tech-docs
-                                 /generate-bdd ←──────────┘   /generate-code
-                                 /generate-tech-docs           /generate-tests
-                                 /generate-code                commit → push
-                                 /generate-tests               (2-layer commit)
-                                 commit → push
-                                 (2-layer commit)
+                                 /generate-bdd (+ Design Spec)    /generate-bdd
+                                 /generate-tech-docs         /generate-tech-docs
+                                 /review-tech-docs            /review-tech-docs
+                                 /generate-code               /generate-code
+                                 /generate-tests              /generate-tests
+                                 /review-code                 /review-code
+                                 /run-tests                   /run-tests
+                                 commit → push                commit → push
+                                 (2-layer commit)             (2-layer commit)
 ```
 
 ### Chi tiết từng bước
@@ -270,11 +273,18 @@ push to spec repo ──────────────→ git submodule up
 # → Output: specs/prd/auth/FEAT-01-login-prd.md
 # → Đảm bảo có @trace.domain: auth trong frontmatter
 
+/refine-prd specs/prd/auth/FEAT-01-login-prd.md
+# → Review PRD qua 4 lens: QA / DEV / SA / PO
+# → Phát hiện gap trước khi share với dev team
+
 /review-context specs/prd/auth/FEAT-01-login-prd.md
-# → Kiểm tra chất lượng PRD, fix nếu cần
+# → Kiểm tra chất lượng + P0 domain check
 
 /review-context --fix specs/prd/auth/FEAT-01-login-prd.md
 # → Auto-fix các vấn đề nhỏ
+
+# Sau khi hài lòng → đổi status sang approved:
+# @trace.status: approved   (trong PRD frontmatter / metadata table)
 ```
 
 #### Bước 2 — PO: Tạo Design Spec (chỉ cho FE/App)
@@ -311,16 +321,26 @@ git push
 ```bash
 # Mở Claude Code tại umbrella repo
 
-# Verify PRD trước (P0 check cho umbrella mode)
+# Bước 4.1 — Verify PRD trước (P0 check cho umbrella mode)
 /review-context my-project-specs/specs/prd/auth/FEAT-01-login-prd.md
+# → P0: @trace.domain khớp services config?
+# → @trace.status: approved? (không làm tiếp nếu còn draft)
 
-# Nếu P0 pass → generate BDD
+# Bước 4.2 — Generate BDD
 /generate-bdd my-project-specs/specs/prd/auth/FEAT-01-login-prd.md
 # → Output vào đúng service submodule theo domain routing
 
+# Bước 4.3 — Generate Tech Docs + review
 /generate-tech-docs auth/FEAT-01-UC1
-/generate-code auth/FEAT-01-UC1
-/generate-tests auth/FEAT-01-UC1
+/review-tech-docs   auth/FEAT-01-UC1     # kiểm tra API spec, schema
+
+# Bước 4.4 — Generate Code + Tests
+/generate-code   auth/FEAT-01-UC1
+/generate-tests  auth/FEAT-01-UC1
+
+# Bước 4.5 — Review + chạy test
+/review-code     {files-changed}         # 4 lens: Security/Perf/Arch/Test
+/run-tests                               # BDD pass = implement đúng spec
 ```
 
 #### Bước 5 — Dev team: Commit 2 tầng
@@ -446,7 +466,10 @@ git pull
 # Mở Claude Code tại thư mục này
 /define-product                          # khởi tạo product definition
 /generate-prd {product-definition-file}  # generate PRD
-/review-context --fix {prd-file}         # review + auto-fix
+/refine-prd {prd-file}                   # review 4 lens: QA/DEV/SA/PO
+/review-context {prd-file}               # kiểm tra chất lượng + P0 check
+/review-context --fix {prd-file}         # auto-fix vấn đề nhỏ
+# → update @trace.status: approved khi PRD sẵn sàng
 /generate-design-spec {prd-file}         # generate design spec (FE/App)
 
 git add specs/
@@ -467,13 +490,16 @@ git commit -m "chore: sync specs" && git push
 
 # Mở Claude Code tại my-project-web/
 /review-context my-project-specs/specs/prd/{domain}/{TICKET-ID}-prd.md
-# → P0 check: verify @trace.domain routing
-# → Nếu có issues → báo PO fix
+# → P0 check: @trace.domain khớp services config?
+# → @trace.status: approved? — không làm tiếp nếu draft
 
-/generate-bdd      my-project-specs/specs/prd/{domain}/{TICKET-ID}-prd.md
+/generate-bdd       my-project-specs/specs/prd/{domain}/{TICKET-ID}-prd.md
 /generate-tech-docs {domain}/{TICKET-ID}-UC1
-/generate-code     {domain}/{TICKET-ID}-UC1
-/generate-tests    {domain}/{TICKET-ID}-UC1
+/review-tech-docs   {domain}/{TICKET-ID}-UC1   # verify API spec, component spec
+/generate-code      {domain}/{TICKET-ID}-UC1
+/generate-tests     {domain}/{TICKET-ID}-UC1
+/review-code        {files-changed}            # 4 lens trước khi commit
+/run-tests                                     # BDD pass = done
 
 # Commit 2 tầng
 cd mass-product-web
@@ -491,9 +517,15 @@ git submodule update --remote my-project-specs
 
 # Mở Claude Code tại my-project-be/
 /review-context my-project-specs/specs/prd/{domain}/{TICKET-ID}-prd.md
-/generate-bdd      my-project-specs/specs/prd/{domain}/{TICKET-ID}-prd.md
+# → @trace.status: approved? — không làm tiếp nếu draft
+
+/generate-bdd       my-project-specs/specs/prd/{domain}/{TICKET-ID}-prd.md
 /generate-tech-docs {domain}/{TICKET-ID}-UC1
-/generate-code     {domain}/{TICKET-ID}-UC1
+/review-tech-docs   {domain}/{TICKET-ID}-UC1   # verify API spec, DB schema
+/generate-code      {domain}/{TICKET-ID}-UC1
+/generate-tests     {domain}/{TICKET-ID}-UC1
+/review-code        {files-changed}
+/run-tests
 
 # Commit 2 tầng (vào đúng service submodule theo domain)
 cd user-service    # hoặc order-service tùy domain
