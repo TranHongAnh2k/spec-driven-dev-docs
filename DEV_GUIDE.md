@@ -21,23 +21,22 @@ Mô tả vai trò, workflow, và các tình huống thực tế khi làm việc 
 ```
 PO/BA                     Dev
 ──────────────────────    ──────────────────────────────────────
-/define-product           /review-context (đọc PRD trước khi bắt đầu)
-/generate-prd        →    /generate-bdd      (từ PRD → BDD)
-/refine-prd               /generate-tech-docs (từ PRD + BDD → Tech Docs)
+/define-product           /review-context (đọc PRD + BDD)
+/generate-prd        →    đọc BDD từ spec submodule
+/refine-prd               /generate-tech-docs (từ BDD → Tech Docs)
 /review-context           /generate-code     (từ BDD + Tech Docs → Code)
-/generate-design-spec →   /generate-bdd (FE/App: đọc cả Design Spec)
-                          /review-code
-                          /generate-tests
-                          /run-tests
-                          /fix-bug / /debug
+/generate-design-spec →   /generate-tests
+/generate-bdd (web)       /review-code
+/generate-bdd (app)       /run-tests
+/generate-bdd (system)    /fix-bug / /debug
                           /validate-traces
 ```
 
 **Dev chịu trách nhiệm:**
-- Đọc và hiểu PRD trước khi generate bất kỳ thứ gì
-- Generate BDD đúng với platform của mình (BE/FE/App có BDD khác nhau)
-- Đảm bảo code trace về đúng BDD, BDD trace về đúng PRD
-- Báo PO/BA khi PRD có gì không rõ hoặc mâu thuẫn — không tự suy diễn
+- Đọc và hiểu PRD + BDD từ spec submodule trước khi bắt đầu
+- **KHÔNG tự generate BDD** — BDD đã được PO generate trong spec repo
+- Đảm bảo code trace về đúng BDD scenario, BDD trace về đúng PRD
+- Báo PO/BA khi PRD hoặc BDD có gì không rõ hoặc mâu thuẫn — không tự suy diễn
 
 **Dev KHÔNG làm:**
 - Viết/sửa PRD — đó là việc của PO/BA
@@ -50,18 +49,68 @@ PO/BA                     Dev
 
 | Command | Mục đích | Khi nào dùng |
 |---|---|---|
-| `/review-context {prd-file}` | Đọc + xác nhận PRD đủ rõ trước khi code | **Bước đầu tiên** khi nhận PRD mới |
-| `/generate-bdd {prd-file}` | Sinh BDD Gherkin từ PRD | Sau khi review-context pass |
-| `/generate-tech-docs {prd-file}` | Sinh Tech Docs (API, DB schema, sequence diagram) | Sau khi BDD được review |
-| `/generate-code {bdd-file}` | Sinh code skeleton từ BDD + Tech Docs | Sau khi tech docs sẵn sàng |
+| `/sync` `[spec-branch]` | **One-command setup hoặc update** — git pull + submodule sync + Living Docs refresh (nội dung dự án). Truyền branch để override branch spec submodule (vd `/sync develop`) | **Mỗi sáng trước khi bắt đầu work** |
+| `/update-framework` | Nâng cấp **bản thân framework** (`.agent/commands/`, steps/, modules/) từ npm | Khi có version framework mới — không đụng project-context/CLAUDE.md |
+| `/review-context {prd-file}` | Đọc + xác nhận PRD + BDD đủ rõ trước khi code | **Bước đầu tiên** khi nhận PRD mới |
+| `/generate-tech-docs {prd-file}` | Sinh Tech Docs (API, DB schema, sequence diagram) | Sau khi đọc BDD từ spec submodule |
+| `/generate-code {bdd-file}` | Sinh code — BE hoặc FE khi API đã sẵn sàng | Sau khi tech docs `approved` |
+| `/generate-code {bdd-file} --phase=ui` | FE: gen UI + mock adapter (BE chưa ready) | Ngay sau khi đọc BDD |
+| `/generate-code {bdd-file} --phase=integration` | FE: wire API thật thay mock | Sau khi sign-off gate `approved` |
 | `/generate-tests {bdd-file}` | Sinh test cases từ BDD | Song song hoặc sau generate-code |
 | `/review-code {file}` | Review code theo 4 lens (Security/Perf/Arch/Test) | Trước khi tạo PR |
 | `/review-tech-docs {tech-doc-file}` | Review chất lượng Tech Docs | Sau generate-tech-docs |
-| `/run-tests` | Chạy test suite hiện tại | Sau khi code + tests sẵn sàng |
+| `/run-tests` | Chạy test suite hiện tại — *umbrella mode: tự `cd` vào service_root, dùng service's `test_command`* | Sau khi code + tests sẵn sàng |
 | `/fix-bug {issue}` | Phân tích + fix bug có trace | Khi có bug report |
 | `/debug {symptom}` | Debug vấn đề chưa rõ nguyên nhân | Khi cần trace root cause |
 | `/smoke-test` | Kiểm tra nhanh các luồng chính | Sau deploy hoặc merge lớn |
 | `/validate-traces` | Kiểm tra toàn bộ trace chain còn hợp lệ | Sau refactor hoặc khi PRD update |
+| `/learn {text}` | Ghi lại lỗi AI hay lặp thành guardrail | Khi AI lặp lại lỗi mà bạn không muốn nó tái diễn |
+
+### Project Lessons — dạy framework không lặp lỗi
+
+AI đôi khi lặp đi lặp lại một lỗi trong dự án (vd: gọi repository thẳng từ controller, quên null-check). Thay vì sửa thủ công mỗi lần, **ghi lại thành "lesson"** — context-loader sẽ nạp nó vào đầu **mọi** lệnh như một ràng buộc cứng.
+
+**2 cách ghi nhận:**
+
+```bash
+# Cách 1 — chủ động
+/learn AI hay gọi repository thẳng từ controller, phải đi qua service layer
+
+# Cách 2 — tự động: khi /review-code, /fix-bug, /debug phát hiện lỗi lặp lại
+# → nó hỏi "Record as a project lesson? (Y/N)" → Y
+```
+
+**Lưu ở đâu:** `paths.lessons_file` (mặc định `specs/domain-knowledge/lessons-learned.md`; umbrella: `.agent/project-lessons.md` mỗi service). **Commit file này** để cả team cùng được bảo vệ.
+
+> Đây là **bộ nhớ dự án**, không phải fine-tune model — lesson được nạp vào context mỗi lần chạy, nên AI "nhớ" và không lặp lại. Xem `[CTX LOADED]` có dòng `Lessons: loaded — N guardrails`.
+
+### Xử lý feedback từ tester
+
+Tester gửi bug report (`/report-bug`) và đề xuất scenario (`/propose-scenario`) vào `feedback/` của **spec repo**. Khi dev chạy `/sync`, nó liệt kê:
+
+```
+📥 New tester feedback (pulled this sync):
+   Bug reports:    BUG-20260608-01  FT-001 — ...  [layer: Code]
+   Scenario proposals: FT-001-trailing-spaces → AC2 (pending review)
+```
+
+Dev hành động theo phân loại:
+- **Bug report** → `/fix-bug {BUG-ID}` (report đã có sẵn spec-context + AC bị vi phạm + layer)
+- **Scenario proposal map vào AC sẵn có** → thêm scenario vào `.feature` (hoặc `/generate-bdd` lại), rồi `/generate-code` + `/generate-tests`
+- **Proposal là yêu cầu mới (PRD change request)** → chuyển PO sửa PRD trước
+
+> Tester chỉ *đề xuất* trong `feedback/` — dev/PO mới đưa vào BDD chính thức. Giữ đúng ownership.
+
+### Khi nào dùng `--phase` cho FE/App?
+
+| Tình huống | Command |
+|---|---|
+| API **đã có sẵn** và đang hoạt động | `/generate-code {file}` — không flag, gen real API ngay |
+| BE **chưa ready**, FE muốn bắt đầu ngay | `/generate-code {file} --phase=ui` — UI + mock adapter |
+| Sign-off gate xong, cần wire API thật | `/generate-code {file} --phase=integration` |
+| BE implement (system BDD) | `/generate-code {file}` — không flag |
+
+> `--phase` chỉ có giá trị khi BE chưa sẵn sàng. Nếu API đã live → bỏ qua `--phase`, chạy thẳng default.
 
 ---
 
@@ -99,15 +148,17 @@ Scenario: Lock account after 5 failed attempts
 
 Khi BDD pass → code đang hoạt động đúng spec. Khi BDD fail → code lệch khỏi yêu cầu. Không cần đọc PRD để biết feature có đang hoạt động không — chạy BDD là biết ngay.
 
-### BDD khác nhau theo platform từ cùng 1 PRD
+### BDD đến từ spec repo — Dev đọc, không tự gen
 
-| Platform | BDD focus | Ví dụ scenario |
+BDD được PO generate trong spec repo, nằm tại `specs/bdd/{domain}/`:
+
+| Subfolder | Platform | Dev team đọc |
 |---|---|---|
-| **BE** | API contracts, business logic, data integrity | `POST /auth/login → 200 OK + JWT` |
-| **FE/Web** | User interactions, UI state, Playwright flows | `Click Login → see dashboard` |
-| **App** | Mobile gestures, screen transitions, offline behavior | `Tap Login → navigate to HomeScreen` |
+| `web/` | FE/Web (clicks, sees, navigates) | FE/Web dev |
+| `app/` | Mobile (taps, sees screen, navigates) | App dev |
+| `system/` | System/BE (request, response, business rules) | BE dev |
 
-Cả 3 đều trace về **cùng 1 PRD**. BE không cần đọc BDD của FE và ngược lại.
+Cả 3 subfolder đều trace về **cùng 1 PRD**. BE không cần đọc BDD của FE và ngược lại.
 
 ---
 
@@ -141,10 +192,33 @@ src/auth/auth.service.ts                ← // @trace.bdd: FT-001-UC1-SC1
 - Sau khi PRD được PO cập nhật (version mới)
 - Trước khi tạo PR lớn
 - Khi CI báo trace validation fail
+- **Sau mỗi codegen session trong umbrella mode** — để sync Living Docs panel
 
 ```
 /validate-traces
 → Sẽ report: broken links, orphan BDD (không có PRD), dead code traces
+```
+
+**Lưu ý khi dùng umbrella (submodule):**
+
+```
+Vấn đề: Living Docs panel mở ở umbrella root → đọc .trace/ ở umbrella root → TRỐNG.
+         TSV thực tế nằm trong từng service submodule: user-service/.trace/, order-service/.trace/
+
+Giải pháp: /validate-traces sẽ tự gom từ tất cả service submodule và sync về umbrella .trace/
+
+Lệnh chạy sau mỗi session:
+/validate-traces
+→ Reads từ user-service/.trace/, order-service/.trace/, ...
+→ Copies TSVs → .trace/{service}/{UC-ID}.tsv (umbrella root)
+→ Writes merged trace-report.json → .trace/trace-report.json
+→ Living Docs panel cập nhật ngay
+```
+
+Thêm umbrella `.trace/` vào `.gitignore` (chỉ là mirror, không commit):
+```
+# .gitignore tại umbrella root
+.trace/
 ```
 
 ---
@@ -152,29 +226,41 @@ src/auth/auth.service.ts                ← // @trace.bdd: FT-001-UC1-SC1
 ## 5. Workflow Cơ Bản
 
 ```
-Nhận thông báo PRD mới từ PO
+Nhận thông báo PRD + BDD mới từ PO
+        │
+        ▼
+git submodule update --remote my-project-specs
+(lấy spec mới nhất, bao gồm cả BDD đã được PO gen)
         │
         ▼
 /review-context {prd-file}
 → Kiểm tra @trace.domain, @trace.status = approved
-→ Đọc hiểu AC, UC, BR
+→ Đọc hiểu AC, UC, BR trong PRD
+→ Đọc BDD tương ứng trong specs/bdd/{domain}/{platform}/
 → Nếu có gì không rõ: hỏi PO TRƯỚC khi tiếp tục
         │
         ▼
-/generate-bdd {prd-file}
-→ Gen Gherkin scenarios cho platform của mình
-→ Review: đủ happy path? edge case? error path?
+(Đọc BDD từ spec submodule — KHÔNG tự generate BDD)
+FE/Web:  my-project-specs/specs/bdd/{domain}/web/{TICKET-ID}-UC*.feature
+App:     my-project-specs/specs/bdd/{domain}/app/{TICKET-ID}-UC*.feature
+BE:      my-project-specs/specs/bdd/{domain}/system/{TICKET-ID}-UC*.feature
         │
         ▼
 /generate-tech-docs {prd-file}
-→ Gen API spec, DB schema, sequence diagram
+→ Gen API spec, DB schema, sequence diagram dựa trên BDD
 → /review-tech-docs để verify chất lượng
         │
         ▼
+# BE (hoặc full-stack không cần mock split):
 /generate-code {bdd-file}
-→ Gen code skeleton theo BDD
-→ Implement logic
+→ Gen code skeleton theo BDD + tech docs
 → Đảm bảo @trace.bdd comment trong code
+
+# FE/App (2 phases — không cần chờ BE):
+/generate-code {bdd-file} --phase=ui          # Phase 1: UI + mock adapter
+→ Tester test FE ngay (không cần BE ready)
+/generate-code {bdd-file} --phase=integration # Phase 2: sau khi sign-off done
+→ Wire real API thay thế mock
         │
         ▼
 /generate-tests {bdd-file}
@@ -196,104 +282,109 @@ Tạo PR → notify PO/SA review
 
 ---
 
-### Tình huống 1: Nhận PRD mới và bắt đầu work
+### Tình huống 1: Nhận PRD + BDD mới và bắt đầu work
 
-**Bối cảnh:** PO thông báo PRD `FT-042-checkout.md` đã approved.
+**Bối cảnh:** PO thông báo PRD `FT-042-checkout.md` và BDD đã approved, sẵn sàng implement.
 
 **Các bước:**
 
 ```
-1. /review-context specs/prd/payment/FT-042-checkout.md
+1. git submodule update --remote my-project-specs
+   (lấy PRD + BDD mới nhất từ PO)
+
+2. /review-context my-project-specs/specs/prd/payment/FT-042-checkout.md
    → Kiểm tra @trace.status = approved (không code khi còn draft)
-   → Đọc kỹ AC, UC, BR — ghi chú gì chưa rõ
+   → Đọc kỹ AC, UC, BR
 
-2. Nếu có thắc mắc → hỏi PO ngay, không tự suy diễn
-   Ví dụ: "BR5 nói 'kiểm tra giới hạn thanh toán' — giới hạn này config ở đâu?
-           Trong DB hay hardcode? Có khác nhau theo tier user không?"
+3. Đọc BDD tương ứng theo platform của mình:
+   FE/Web:  my-project-specs/specs/bdd/payment/web/FT-042-UC*.feature
+   App:     my-project-specs/specs/bdd/payment/app/FT-042-UC*.feature
+   BE:      my-project-specs/specs/bdd/payment/system/FT-042-UC*.feature
 
-3. Sau khi rõ ràng:
-   /generate-bdd specs/prd/payment/FT-042-checkout.md
+4. Nếu có thắc mắc về PRD hoặc BDD → hỏi PO ngay, không tự suy diễn
+   Ví dụ: "BR5 trong System BDD nói 'kiểm tra giới hạn thanh toán' — limit này
+           có khác nhau theo tier user không? BDD không chỉ rõ."
 
-4. Review BDD output:
-   - Đủ happy path?
-   - Edge cases (giỏ hàng rỗng, hết hàng, timeout payment)?
-   - Error paths (card declined, network error)?
+5. Bắt đầu: /generate-tech-docs dựa trên BDD
 ```
 
 **Lưu ý:** Nếu `/review-context` báo P0 warning (domain không match config) → **dừng lại**, báo PO/DevOps fix config trước.
 
 ---
 
-### Tình huống 2: Generate BDD cho BE (API-centric)
+### Tình huống 2: Đọc và hiểu System BDD (BE dev)
 
-**Bối cảnh:** BE dev nhận PRD về tính năng đăng nhập.
+**Bối cảnh:** BE dev nhận thông báo BDD đã sẵn sàng tại `specs/bdd/auth/system/`.
 
-**BDD BE tập trung vào:**
-- HTTP request/response contracts
-- Business rule enforcement tại API layer
-- Data validation, error codes
-- Database state changes
+**System BDD tập trung vào:**
+- API contracts được tổng hợp từ FE + App BDD
+- Business rule enforcement tại system level
+- Data contracts (request/response shape)
+- Cross-platform consistency
 
 ```
-/generate-bdd specs/prd/auth/FT-001-login.md
-→ Agent sẽ hỏi: "Platform? (BE/FE/App)"
-→ Chọn BE
-
-Output: specs/bdd/auth/FT-001-login.feature
+# Đọc file BDD (không generate):
+my-project-specs/specs/bdd/auth/system/FT-001-UC1-login-system.feature
 ```
 
 ```gherkin
-# Ví dụ BDD BE được gen ra
-Feature: User Authentication
-  @trace.prd: FT-001
-  @trace.module: AuthService
+# Ví dụ System BDD do PO gen (tổng hợp từ web + app BDD)
+Feature: User Authentication — System Contract
+  # @trace.prd: FT-001
+  # @trace.platform: system
 
-  Scenario: Successful login returns JWT token
-    Given user "alice@example.com" exists with valid credentials
-    When POST /api/v1/auth/login with {"email": "...", "password": "..."}
-    Then response status is 200
-    And response body contains "access_token" and "refresh_token"
-    And token expires_in is 3600
+  Scenario: Successful login returns token and profile
+    Given a registered user with valid credentials
+    When the system receives a login request
+    Then the system returns an auth token
+    And the system returns the user profile
+    And the session is valid for 3600 seconds
 
-  Scenario: Failed login increments attempt counter
-    Given user has 0 failed attempts
-    When POST /api/v1/auth/login with wrong password
-    Then response status is 401
-    And failed_attempts increases by 1
+  Scenario: Account locked after 5 failed attempts
+    Given a user with 4 failed login attempts
+    When the system receives a 5th failed login
+    Then the system locks the account for 30 minutes
+    And the system signals the locked state with remaining time
 ```
+
+BE dev dùng System BDD để:
+1. Thiết kế API endpoint + response schema (`/generate-tech-docs`)
+2. Generate code skeleton (`/generate-code`)
+3. Viết integration tests (`/generate-tests`)
 
 ---
 
-### Tình huống 3: Generate BDD cho FE/App (UI-centric)
+### Tình huống 3: Đọc Web/App BDD (FE/App dev)
 
-**Bối cảnh:** FE dev nhận PRD + Design Spec về cùng tính năng đăng nhập.
-
-**FE/App cần đọc cả 2:**
-- PRD → business rules, AC
-- Design Spec → screen names, component names, user flow
+**Bối cảnh:** FE dev nhận thông báo BDD web đã sẵn sàng tại `specs/bdd/auth/web/`.
 
 ```
-/generate-bdd specs/prd/auth/FT-001-login.md
-→ Platform: FE (Web)
-→ Agent tự đọc Design Spec nếu có link trong PRD
-
-Output: specs/bdd/auth/FT-001-login-web.feature
+# Đọc file BDD (không generate):
+my-project-specs/specs/bdd/auth/web/FT-001-UC1-login-web.feature
 ```
 
 ```gherkin
-# BDD FE/Web — khác hoàn toàn với BE
-Scenario: User sees error message after wrong password
-  Given user is on LoginScreen
-  When user enters wrong password and taps "Đăng nhập"
-  Then error toast "Sai mật khẩu" appears
-  And password field is cleared
-  And "Quên mật khẩu?" link is highlighted
+# Ví dụ Web BDD do PO gen (vocabulary: clicks, sees, navigates)
+Scenario: User sees error after wrong password
+  Given user is on the Login screen
+  When user submits login with wrong password
+  Then user sees "Sai mật khẩu" error
+  And the password field is cleared
 
-Scenario: Account locked — show countdown
-  Given user has entered wrong password 5 times
-  Then LoginScreen shows "Tài khoản bị khoá. Thử lại sau 29:45"
-  And countdown timer decrements every second
+Scenario: Account locked — countdown shown
+  Given user has submitted wrong password 5 times
+  Then user sees "Tài khoản bị khoá. Thử lại sau 29:45"
+  And the countdown decrements every second
 ```
+
+FE dev dùng Web BDD để:
+1. Thiết kế component spec + API integration plan (`/generate-tech-docs`)
+2. Gen UI + mock adapter từ System BDD contract (`/generate-code --phase=ui`)
+   → Mock adapter trả về fixture data đúng với BDD `Then` clauses
+   → Tester test toàn bộ FE flow ngay, không cần chờ BE
+3. [Trong khi đó — tham gia review API contract, sign-off T7 gate]
+4. Khi sign-off done → wire real API (`/generate-code --phase=integration`)
+5. Viết E2E tests với Playwright/Cypress (`/generate-tests`)
 
 ---
 
@@ -314,7 +405,7 @@ Dev chạy:
         │
         ▼
 Đánh giá impact:
-- BDD bị ảnh hưởng? → update BDD scenarios liên quan
+- BDD bị ảnh hưởng? → thông báo PO để PO update BDD trong spec repo, rồi pull lại
 - Tech Docs bị ảnh hưởng? → update API spec
 - Code bị ảnh hưởng? → update logic + tests
 
@@ -325,6 +416,63 @@ Dev chạy:
 ```
 
 **Nguyên tắc:** Không merge code khi traces broken. Fix traces trước.
+
+---
+
+### Tình huống 4b: Chờ API design — BE + FE/App đồng thuận
+
+**Bối cảnh:** System BDD đã gen, BE dev bắt đầu `/generate-tech-docs` nhưng FE/App chưa confirm API contract.
+
+**Trạng thái tech docs trong thời gian này:** `@trace.status: in-review`
+
+```
+BE dev: /generate-tech-docs auth/FT-001-UC1
+→ Output: user-service/specs/tech-docs/auth/FT-001-UC1-tech-design.md
+→ @trace.status: draft
+→ @trace.sign_off: { be_team: done, fe_team: pending, app_team: pending, sa: pending }
+
+BE dev: /review-tech-docs user-service/specs/tech-docs/auth/FT-001-UC1-tech-design.md
+→ Chạy T1–T7 (bao gồm T7 cross-team contract check)
+→ Report: "Sign-off gate: 🔒 BLOCKED — pending: fe_team, app_team, sa"
+```
+
+**FE dev review API contract:**
+```
+# FE dev mở tech-design file → xem API contract section
+# Xác nhận: response fields có đủ cho web BDD expectations không?
+# Nếu ok → thêm comment hoặc báo BE dev cập nhật sign_off
+```
+
+Khi FE/App confirm xong → BE dev update header:
+```yaml
+# @trace.sign_off:
+#   be_team:  done
+#   fe_team:  done    ← FE đã confirm
+#   app_team: done    ← App đã confirm
+#   sa:       done    ← SA đã approve
+```
+
+```
+BE dev: /review-tech-docs --resume {tech-design-file}
+→ Sign-off gate: ✅ READY
+→ @trace.status: approved
+→ BE có thể chạy /generate-code
+→ FE chạy /generate-code --phase=integration để wire API thật
+```
+
+```
+# FE — sau khi sign-off gate approved:
+/generate-code --phase=integration auth/FT-001-UC1
+→ Reads existing mock adapter interface ({UC-ID}ApiPort)
+→ Generates real API adapter với calls đến endpoints trong tech-doc
+→ Flips DI/env flag: service dùng real adapter thay mock
+→ Mock adapter giữ lại cho unit test
+```
+
+**Nguyên tắc:** 
+- `/generate-code` (không phase flag) cho BE trả về warning nếu tech docs status là `in-review` hoặc `draft`.
+- FE dùng `--phase=ui` được ngay sau khi đọc BDD — không cần chờ.
+- FE dùng `--phase=integration` chỉ sau khi sign-off gate `approved`.
 
 ---
 
@@ -409,31 +557,93 @@ Notify tester:
 
 ---
 
-### Tình huống 6: Nhận Design Spec từ PO (FE/App)
+### Tình huống 6: Nhận Design Spec + BDD từ PO (FE/App)
 
-**Bối cảnh:** PO tạo Design Spec cho tính năng checkout — FE cần implement.
+**Bối cảnh:** PO tạo Design Spec + BDD web cho tính năng checkout — FE cần implement.
 
 ```
-PO thông báo: "Design Spec FT-042-checkout-design.md đã sẵn sàng"
+PO thông báo: "FT-042 Design Spec + BDD đã sẵn sàng"
         │
         ▼
-FE dev đọc:
-- specs/prd/payment/FT-042-checkout.md (business rules)
-- specs/design/payment/FT-042-checkout-design.md (screens, components, flow)
+git submodule update --remote my-project-specs
 
-        │
-        ▼
-/generate-bdd specs/prd/payment/FT-042-checkout.md
-→ Platform: FE
-→ Agent đọc cả Design Spec → gen BDD với đúng screen names + component names
+FE dev đọc:
+- my-project-specs/specs/prd/payment/FT-042-checkout.md      (business rules)
+- my-project-specs/specs/design-spec/payment/FT-042-*.md     (screens, components)
+- my-project-specs/specs/bdd/payment/web/FT-042-UC*.feature  (BDD đã gen sẵn)
 
         │
         ▼
 /sync-figma-components (nếu dùng Figma)
 → Đồng bộ component tokens từ Figma vào codebase
+
+        │
+        ▼
+/generate-tech-docs payment/FT-042-UC1
+→ Gen component spec, API integration plan dựa trên Design Spec + BDD
+
+        │
+        ▼
+/generate-code payment/FT-042-UC1 --phase=ui
+→ Gen UI components + mock API adapter (fixture từ System BDD Then clauses)
+→ Tester có thể test FE ngay
+
+        │  [trong khi đó: tham gia review API contract — T7 sign-off gate]
+        ▼
+[Nhận thông báo: sign-off gate approved]
+
+        │
+        ▼
+/generate-code payment/FT-042-UC1 --phase=integration
+→ Wire real API adapter thay thế mock
+→ /generate-tests payment/FT-042-UC1
+→ /review-code {files-changed}
+→ /run-tests
 ```
 
-**Lưu ý:** BE không cần đọc Design Spec — chỉ đọc PRD.
+**Lưu ý:** BE không cần đọc Design Spec — chỉ đọc System BDD tại `specs/bdd/{domain}/system/`.
+
+---
+
+### Tình huống 7b: Brownfield — API đã tồn tại trên hệ thống cũ
+
+**Bối cảnh:** PO viết PRD cho feature mới nhưng BE API đã có sẵn trên hệ thống cũ, chưa có tài liệu. PO khai báo luôn trong PRD thay vì thiết kế lại.
+
+**Dấu hiệu nhận ra:**
+- PRD Metadata có `| **API Source** | existing |`
+- PRD có section "Existing API Contract" với bảng endpoint + response
+
+**Dev workflow (đơn giản hơn greenfield):**
+
+```
+git submodule update --remote my-project-specs
+
+1. /review-context → đọc PRD + BDD
+   → BDD system đã dùng contract sẵn có từ PRD (không synthesis)
+   → @trace.api_source: existing trong BDD header
+
+2. /generate-tech-docs {feature-file}
+   → Mode: Reverse-document
+   → §2 API Endpoints: mô tả lại API đã tồn tại từ bảng PRD
+   → Ghi chú gaps nếu contract thực tế khác BDD expectations
+
+3. /review-tech-docs {tech-design-file}
+   → T7 sign-off gate: tự động SKIP (không có API design mới)
+   → Chỉ review T1–T6 (architecture, entity, BDD traceability, ...)
+   → Approved nhanh hơn
+
+4. /generate-code {feature-file}   ← không cần --phase
+   → API đã live, gen real adapter trực tiếp
+```
+
+**Điểm khác biệt so với greenfield:**
+
+| | Greenfield | Brownfield (API existing) |
+|---|---|---|
+| System BDD | Synthesize từ FE + App BDD | Dùng PRD contract trực tiếp |
+| T7 gate | Bắt buộc | Tự động skip |
+| `--phase=ui` | Cần nếu BE chưa ready | Không cần |
+| `generate-tech-docs` | Design mới | Reverse-document |
 
 ---
 
@@ -448,16 +658,27 @@ FE dev đọc:
 git clone {umbrella-repo-url} mass-product
 cd mass-product
 
-# 2. Init submodules
-git submodule update --init --recursive
+# 2. Mở Claude Code TẠI umbrella root (QUAN TRỌNG)
+code .   ← hoặc claude .
 
-# 3. Mở Claude Code TẠI umbrella root (QUAN TRỌNG)
-cd mass-product   ← umbrella root, không phải service dir
-code .            ← hoặc claude .
+# 3. Chạy một lệnh duy nhất — setup toàn bộ
+/sync
+# → tự detect setup mode (submodule chưa init)
+# → git pull + git submodule update --init --recursive --remote
+# → validate service configs (cảnh báo nếu thiếu .agent/project-context.yaml)
+# → sync Living Docs panel
 
 # 4. Framework tự detect umbrella mode từ project-context.yaml
 # Khi chạy /review-context với PRD có @trace.domain: be
 # → tự động route tới mass-product-be/specs/bdd/
+```
+
+**Update hằng ngày — cũng chỉ 1 lệnh:**
+
+```bash
+/sync
+# → git pull + submodule update --remote
+# → refresh Living Docs
 ```
 
 **project-context.yaml của umbrella:**
@@ -477,6 +698,44 @@ services:
     specs_dir: "mass-product-web/specs/bdd"
     tech_docs_dir: "mass-product-web/specs/tech-docs"
 ```
+
+> **Bắt buộc:** Mỗi service submodule cũng cần file `.agent/project-context.yaml` riêng. Framework đọc file này (context-loader Step 1.6) để lấy đúng `test_command` và `build_command` khi `/run-tests` hoặc `/generate-tests` chạy từ umbrella root.
+
+**project-context.yaml của từng service submodule:**
+```yaml
+# mass-product-be/.agent/project-context.yaml
+tech_stack:
+  language: "TypeScript"
+  framework: "NestJS"
+  module: "nestjs"
+
+conventions:
+  test_command: "npm test"
+  build_command: "npm run build"
+
+paths:
+  trace_dir: ".trace"
+```
+
+```yaml
+# mass-product-web/.agent/project-context.yaml
+tech_stack:
+  language: "TypeScript"
+  framework: "Next.js 14"
+  module: "nextjs"
+
+conventions:
+  test_command: "npx vitest run"
+  build_command: "npm run build"
+
+paths:
+  trace_dir: ".trace"
+```
+
+Khi `/run-tests` chạy từ umbrella root cho một UC thuộc domain `be`:
+1. Step 1.5 detect `service_root = "mass-product-be"`
+2. Step 1.6 load `mass-product-be/.agent/project-context.yaml` → `test_command = "npm test"`
+3. Lệnh test chạy: `cd mass-product-be && npm test`
 
 **Commit 2 lớp (bắt buộc):**
 
@@ -532,9 +791,9 @@ Fix: Update @trace.module và references → re-run /validate-traces → all gre
 ## Checklist trước khi tạo PR
 
 - [ ] `/validate-traces` → all green (không broken trace)
-- [ ] `/run-tests` → all pass
+- [ ] `/run-tests` → all pass *(umbrella: đảm bảo service có `.agent/project-context.yaml` với `test_command` trước khi chạy)*
 - [ ] `/review-code` → không có issue Critical hoặc Major chưa xử lý
-- [ ] BDD scenarios đã cover đủ: happy path + edge cases + error paths
+- [ ] Code trace về đúng BDD scenarios trong `my-project-specs/specs/bdd/`
 - [ ] Code có `@trace.bdd` comment cho các function implement BDD scenario
 - [ ] Tech Docs đã được update nếu có thay đổi API/DB schema
-- [ ] Không tự sửa PRD hay BDD mà không có lý do — log lại nếu có divergence
+- [ ] **Không tự sửa BDD** — BDD là của PO, nếu cần update thì báo PO rồi pull lại

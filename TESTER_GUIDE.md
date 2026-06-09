@@ -22,11 +22,13 @@ Mô tả cách tester's agent kết nối với spec framework, workflow kiểm 
 ```
 PO/BA          Dev                    Tester
 ──────────     ──────────────────     ──────────────────────────
-PRD            BDD (từ PRD)           Đọc PRD + BDD + Tech Docs
-               Tech Docs              /generate-spec-manifest
-               Code                   Viết test cases
-                                      Chạy test
-                                      Trace bug về spec
+PRD            BDD (từ PRD)           /sync + /generate-spec-manifest
+               Tech Docs              Đọc PRD + BDD + Tech Docs
+               Code                   Viết test cases · Chạy test
+   ▲              ▲                    /report-bug      (bug → spec-traced)
+   │              │                    /propose-scenario (edge case → BDD draft)
+   └──────────────┴───── feedback/ trong spec repo ◄────┘
+        PO/Dev thấy qua /sync (📥) → fix / promote / update PRD
 ```
 
 **Tester chịu trách nhiệm:**
@@ -34,12 +36,23 @@ PRD            BDD (từ PRD)           Đọc PRD + BDD + Tech Docs
 - Đọc BDD để biết chính xác scenarios cần cover
 - Đọc Tech Docs để hiểu API contracts và data flow
 - Viết test cases dựa trên BDD scenarios
-- Khi bug xảy ra: trace về đúng spec layer để báo cáo rõ ràng
+- Khi bug xảy ra: `/report-bug` → tạo bug report có spec-context đầy đủ, phân loại layer
+- Khi phát hiện edge case chưa có trong BDD: `/propose-scenario` → đề xuất scenario cho PO/Dev duyệt
 
 **Tester KHÔNG làm:**
-- Sửa PRD / BDD / Tech Docs — đó là việc của PO và Dev
+- Sửa PRD / BDD / Tech Docs trực tiếp — đó là việc của PO và Dev
 - Approve PRD — chỉ PO
 - Generate code — chỉ Dev
+
+> **Lưu ý về `/propose-scenario`:** lệnh này **không** sửa BDD. Nó chỉ ghi một bản *đề xuất* (draft Gherkin) vào vùng `feedback/bdd-proposals/` của spec repo dùng chung. PO/Dev review và đưa vào `.feature` chính thức. Vậy nên không vi phạm nguyên tắc "tester không sửa BDD".
+
+### Commands dành cho Tester
+
+| Command | Mục đích | Khi nào dùng |
+|---|---|---|
+| `/generate-spec-manifest` | Tạo index TICKET-ID → PRD/BDD/tech-doc | Trước mỗi sprint, sau khi pull specs mới |
+| `/report-bug {UC-ID} {mô tả}` | Tạo bug report có spec-context + phân loại layer (read-only) | Khi test fail / phát hiện bug |
+| `/propose-scenario {UC-ID} {mô tả}` | Đề xuất scenario BDD mới cho edge case chưa cover | Khi tìm thấy case ngoài BDD hiện có |
 
 **Tester KHÔNG cần:**
 - Hiểu codebase của từng service
@@ -127,6 +140,38 @@ Trước khi test bất kỳ feature nào:
 4. Đọc PRD trước để hiểu business context
 5. Đọc BDD để biết scenarios cần cover
 ```
+
+### Living Docs Panel (umbrella mode)
+
+Khi làm việc với umbrella repo (nhiều service submodule), VS Code Living Docs panel cần được đồng bộ thủ công trước khi xem.
+
+**Panel đọc từ:** `umbrella-root/.trace/{service}/{UC-ID}.tsv`  
+**Sync bằng:** `/validate-traces` chạy tại umbrella root
+
+```bash
+# Chạy sau mỗi codegen session — hoặc khi cần refresh trạng thái coverage
+/validate-traces
+
+# → Đọc TSVs từ: user-service/.trace/, order-service/.trace/, ...
+# → Copy về:     .trace/{service}/{UC-ID}.tsv  (umbrella root)
+# → Ghi:         .trace/trace-report.json      (aggregated toàn hệ thống)
+# → Panel cập nhật ngay sau khi lệnh hoàn tất
+```
+
+Panel hiển thị trạng thái cross-service:
+
+| Cột | Ý nghĩa |
+|-----|---------|
+| PRDs | Số PRD đã approve / tổng |
+| UCs | Số Use Cases đã implement |
+| Code Cov. | % scenarios có code |
+| Test Cov. | % scenarios có test |
+| DRIFT | Spec thay đổi sau khi gen code |
+| GAP | Code có nhưng chưa có test |
+
+> **Lưu ý:** `.trace/` tại umbrella root là **mirror read-only** — không commit vào git. Authoritative trace state ở từng service submodule.
+>
+> **Prerequisite cho data chính xác:** Mỗi service submodule cần file `.agent/project-context.yaml` với `paths.trace_dir` được configure đúng. Nếu thiếu, framework không biết ghi trace TSV về đâu → panel thiếu data. Báo Dev team kiểm tra nếu panel trống sau khi chạy `/validate-traces`.
 
 ---
 
@@ -453,7 +498,40 @@ Layer 4 — Cross-layer:
 
 Khi test fail, báo cáo phải có đủ **spec context** để Dev fix đúng chỗ.
 
+### Cách nhanh nhất: `/report-bug`
+
+```bash
+/report-bug FT-001 tài khoản khoá sau 6 lần sai, spec ghi 5
+```
+
+Lệnh tự động:
+- Resolve spec-context từ `spec-manifest.yaml`: PRD path + version, BDD scenario fail, tech-doc
+- Tìm **AC bị vi phạm** trong PRD
+- **Phân loại layer** theo BUG_FLOW (Code / BDD / PRD / Design Spec / Env) → route đúng người
+- Phát hiện **coverage gap** (behavior không có scenario nào cover) → gợi ý `/propose-scenario`
+- Ghi report vào **spec repo** (`{spec_source}/feedback/bug-reports/{BUG-ID}.md`) → **commit + push**
+
+Hoàn toàn **read-only** trên spec/code chính thức — chỉ ghi vào vùng `feedback/`. Sửa là việc của Dev (`/fix-bug {BUG-ID}`).
+
+> **Quan trọng — làm sao PO/Dev biết?** Report được commit+push vào **spec repo dùng chung**. PO/Dev chạy `/sync` hàng ngày sẽ thấy dòng `📥 New tester feedback` liệt kê bug mới kéo về. File nằm local một mình thì không ai biết — chính bước push + `/sync` mới khép vòng. (Không có quyền push spec repo → tạo PR/MR.)
+
+### Khi bug là "thiếu scenario" — `/propose-scenario`
+
+Nếu `/report-bug` báo *coverage gap* (behavior đúng nhưng chưa có scenario nào kiểm), đừng chỉ báo miệng — đề xuất luôn:
+
+```bash
+/propose-scenario FT-001 login với email có khoảng trắng ở cuối vẫn phải thành công
+```
+
+- Nếu behavior **đã nằm trong một AC của PRD** → lệnh draft Gherkin (tag `@proposed @from-test`), ghi vào `{spec_source}/feedback/bdd-proposals/` → commit + push. PO/Dev review rồi đưa vào `.feature`.
+- Nếu behavior **chưa có trong PRD** → lệnh dừng và xuất *PRD change request* cho PO (vì scenario phải trace về AC). PO thêm AC trước, rồi `/generate-bdd`.
+
+> Tester không tự ghi vào BDD — chỉ đề xuất. Giữ đúng ownership.
+> Proposal cũng nằm trong spec repo → PO/Dev thấy qua `/sync` (`📥 New tester feedback`).
+
 ### Template báo cáo bug
+
+*(Tham khảo — `/report-bug` tự sinh theo format này. Dùng khi báo cáo thủ công.)*
 
 ```
 Bug ID   : BUG-{date}-{seq}
@@ -526,6 +604,8 @@ Environment: staging (deploy 2026-06-05 09:00)
 Dev sẽ xác định bug thuộc layer nào (code / BDD / PRD / env) và phản hồi với root cause + scenario cần re-test.
 
 > Xem flow phối hợp đầy đủ giữa Tester ↔ Dev ↔ PO trong **[BUG_FLOW.md](BUG_FLOW.md)** — bao gồm 6 cases, communication templates, và close checklist cho từng role.
+
+> **Nếu bạn thấy AI lặp lại cùng một kiểu lỗi qua nhiều feature** (vd: luôn quên một validation, luôn sai một boundary): ghi chú điều này trong bug report. Dev có thể chạy `/learn` để biến nó thành guardrail — AI sẽ không sinh lại lỗi đó ở các UC sau. Đây là cách framework "học" từ bug bạn tìm ra.
 
 ---
 

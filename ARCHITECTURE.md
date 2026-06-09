@@ -196,7 +196,7 @@ spec-driven-dev/
 │   ├── build.js             ← assembles *.tmpl → *.md
 │   └── index.js             ← npm installer + hook installer
 ├── commands/
-│   └── *.tmpl               ← slash commands (14 commands)
+│   └── *.tmpl               ← slash commands (23 commands)
 ├── hooks/
 │   ├── data-guard.js        ← PreToolUse sensitive file protection
 │   └── settings.json        ← hook registration template
@@ -209,16 +209,20 @@ spec-driven-dev/
 │   ├── data-protection.md   ← what AI must NEVER read/write
 │   └── workflow.md          ← general AI behavior rules
 ├── skills/
-│   └── {name}/SKILL.tmpl    ← Claude plugin skills (7 skills)
+│   └── {name}/SKILL.tmpl    ← Claude plugin skills (8 skills)
 ├── steps/
 │   ├── gate.md              ← shared: file resolve + checkpoint
 │   ├── context-loader.md    ← shared: load all project context
+│   ├── spawn-agent.md       ← shared: sub-agent orchestration
+│   ├── capture-lesson.md    ← shared: record a guardrail (/learn etc.)
 │   └── report-footer.md     ← shared: standard output format
 └── templates/
     ├── project-context.yaml ← consumer project config template
     ├── architecture.template.md
     └── platform-guide.template.md
 ```
+
+> Build output (gitignored): `commands/*.md`, `skills/**/SKILL.md`, and `core/` (the distributable copied into a consumer's `.agent/` by `--init`). Consumer-side tester artifacts live in the shared spec repo under `feedback/bug-reports/` and `feedback/bdd-proposals/`.
 
 ---
 

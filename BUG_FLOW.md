@@ -88,6 +88,8 @@ Fix: đổi > thành >=
 → notify: "Case A fixed, re-test FT-001-UC2-SC3"
 ```
 
+> **Nếu root cause là lỗi AI hay lặp khi gen code** (vd: AI cứ dùng `>` thay vì `>=` cho boundary, hay gọi repository thẳng từ controller): `/fix-bug` sẽ hỏi *"Record as a project lesson? (Y/N)"* → chọn **Y**. Lesson được nạp vào mọi lần gen sau → AI không tái phạm. Hoặc chủ động: `/learn "AI hay X, đúng phải Y"`.
+
 ---
 
 ## Case 2 — BDD Bug (BDD ≠ PRD)
@@ -300,11 +302,13 @@ DevOps → check infra, env vars, deploy artifacts
 
 ### Format thông báo bug (Tester → Dev)
 
+Tester chạy `/report-bug {UC-ID} {mô tả}` → tự sinh report theo format dưới (gồm cả phân loại layer + phát hiện coverage gap), commit+push vào **spec repo** `feedback/bug-reports/{BUG-ID}.md`. PO/Dev thấy khi chạy `/sync` (dòng `📥 New tester feedback`):
+
 ```
 [BUG-{ID}] {Feature} — {mô tả ngắn}
 
 Spec:  {PRD path} v{x.x} | AC{N}: "{AC text}"
-BDD:   {BDD path} → "{Scenario title}"
+BDD:   {BDD path} → "{Scenario title}"   (hoặc: ⚠️ no scenario covers this)
 Layer: Code / BDD / PRD / Env  ← Tester đề xuất, Dev xác nhận
 
 Expected: {theo spec}
@@ -312,6 +316,8 @@ Actual:   {thực tế}
 Repro:    {steps}
 Env:      staging / {date deploy}
 ```
+
+> **Nếu Layer = "coverage gap"** (behavior đúng nhưng chưa scenario nào cover): tester chạy `/propose-scenario {UC-ID}` → draft scenario vào `bdd-proposals/` cho PO/Dev duyệt. Xem Case 2.
 
 ### Format thông báo fix xong (Dev → Tester)
 
@@ -358,6 +364,7 @@ Trước khi đánh "Resolved":
 - [ ] Fix đúng layer — không patch code khi lỗi ở BDD hoặc PRD
 - [ ] `/validate-traces` → no broken traces
 - [ ] `/run-tests` → pass
+- [ ] Nếu root cause là lỗi AI gen hay lặp → đã `/learn` (hoặc accept prompt khi `/fix-bug`) để không tái phạm
 - [ ] Notify tester với đầy đủ thông tin re-test
 
 **Tester:**

@@ -399,6 +399,8 @@ domains:
 
 > **Tip:** Commit cả 4 file vào Git để cả team dùng cùng config.
 
+> **Paths nâng cao (tùy chọn — có default sẵn):** `paths.lessons_file` (guardrails từ `/learn`, mặc định `specs/domain-knowledge/lessons-learned.md`), `paths.bug_reports_dir` + `paths.bdd_proposals_dir` (feedback của tester từ `/report-bug` / `/propose-scenario`, mặc định `feedback/...` — ở umbrella tự resolve dưới `{spec_source}/feedback/`). Không cần khai báo nếu dùng default.
+
 ### 4.3 — `specs/domain-knowledge/business-dictionary.md`
 
 Định nghĩa thuật ngữ chuẩn cho toàn project. AI dùng file này để:

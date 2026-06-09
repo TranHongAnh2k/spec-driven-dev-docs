@@ -48,11 +48,21 @@ Installs the framework to `.agent/` (commit to git → whole team shares it) and
 
 ### Upgrade existing project
 
+From **inside Claude Code** (recommended — checks version, handles umbrella mode, reviews the diff):
+
+```
+/update-framework
+```
+
+Or from the **terminal**:
+
 ```bash
 bash scripts/upgrade.sh
 # or:
 npx @anhth2/spec-driven-dev-plugin@latest --init
 ```
+
+> This upgrades only the framework command files. Your `project-context.yaml`, `CLAUDE.md`, domain-knowledge, and `.trace/` are never overwritten. To sync project *content* (submodule code/specs), use `/sync` instead.
 
 ### Legacy install (global / per-project)
 
@@ -149,6 +159,19 @@ Phase 5: Test
   /run-tests ────────────────────────────→ Test report
   /smoke-test ───────────────────────────→ Live endpoint check (optional)
   /validate-traces {domain} ─────────────→ Coverage matrix + drift detection
+
+Phase 6: Tester Feedback  (QA → PO/Dev, closes the loop)
+  /report-bug {UC-ID} ───────────────────→ {spec}/feedback/bug-reports/{BUG-ID}.md  → commit+push
+  /propose-scenario {UC-ID} ─────────────→ {spec}/feedback/bdd-proposals/{...}.md   → commit+push
+                              │
+              PO/Dev: /sync → "📥 New tester feedback"
+                              │
+        bug → /fix-bug · proposal → add to BDD · new req → update PRD
+
+Cross-cutting  (any role, anytime)
+  /sync ─────────────────────────────────→ git pull + submodules + Living Docs + surface feedback
+  /learn "AI does X, should Y" ──────────→ project guardrail (loaded into every command)
+  /update-framework ─────────────────────→ upgrade framework tooling from npm
 ```
 
 ---
@@ -157,15 +180,17 @@ Phase 5: Test
 
 | Phase | Who | Commands | Output |
 |-------|-----|----------|--------|
-| **0. Setup** *(one-time)* | Tech Lead | `/setup-ai-first`, `/sync-figma-*` | Config files, component catalog |
+| **0. Setup** *(one-time)* | Tech Lead | `/setup-ai-first`, `/sync`, `/sync-figma-*` | Config files, submodules, component catalog |
 | **1. Discovery** | PO + AI | `/define-product` | `specs/product-definition/{TICKET-ID}-{slug}.md` |
 | **2. PRD** | AI → SA/PO review | `/generate-prd`, `/refine-prd`, `/review-context` | `specs/prd/{domain}/{TICKET-ID}-{slug}.md` |
 | **2b. Design Spec** *(FE/App only)* | AI → Designer/PO sign-off | `/generate-design-spec` | `specs/design-spec/{domain}/{TICKET-ID}-design-spec-{platform}.md` |
 | **3. BDD Spec** | AI → SA/Dev review | `/generate-bdd`, `/review-context` | `specs/bdd/{domain}/{UC-ID}.feature` |
 | **4. Tech Design** | AI → SA/Lead review | `/generate-tech-docs`, `/review-tech-docs` | `tech-docs/{domain}/{UC-ID}-tech-design.md` |
-| **5. Code** | AI → Dev review | `/generate-code`, `/review-code` | `src/...` |
+| **5. Code** | AI → Dev review | `/generate-code` *(FE: `--phase=ui`/`--phase=integration`)*, `/review-code` | `src/...` |
 | **6. Tests** | AI → CI | `/generate-tests`, `/run-tests` | `src/test/...` |
 | **7. Trace** | Tech Lead | `/validate-traces` | Coverage matrix + drift report |
+| **8. Tester Feedback** | QA → PO/Dev | `/report-bug`, `/propose-scenario` → `/sync` surfaces | `{spec}/feedback/...` → bug fix / new scenario / PRD update |
+| **Cross-cutting** | Any role | `/sync`, `/learn`, `/update-framework` | Synced repo · project guardrails · upgraded tooling |
 
 > **PRD is platform-agnostic (Option C pattern):** One PRD serves all platforms. PRD describes business outcomes only — no UI details, no API specifics.
 > FE/App teams read PRD → generate Design Spec (Phase 2b) → generate BDD.
@@ -275,6 +300,7 @@ Checks: banned terms (P1) · ambiguity in ACs/BRs (P2) · conflicts with other P
 /generate-bdd specs/prd/{domain}/{TICKET-ID}-{slug}.md
 ```
 - Reads `| **Service** |` and `| **Module** |` from PRD metadata
+- **Brownfield shortcut:** if PRD Metadata has `| **API Source** | existing |` → System BDD uses the "Existing API Contract" table in PRD directly, skips synthesis from FE/App BDDs and skips conflict resolution
 - Applies platform vocabulary automatically:
 
   | Module type | "click" | "type" | "navigate" |
@@ -316,6 +342,7 @@ Checks: PRD coverage (every AC + every BR bullet → ≥1 scenario) · Gherkin r
 /generate-tech-docs specs/bdd/{domain}/{UC-ID}.feature
 ```
 - Reads `@trace.module` from feature header → determines platform type → selects template
+- **Brownfield mode:** if `@trace.api_source: existing` → runs in **reverse-document** mode — describes the existing API as-is, notes any gaps, skips design decisions for §2
 
   | backend | web-frontend | mobile |
   |---------|-------------|--------|
@@ -350,8 +377,17 @@ Opens VS Code Review Board → Accept / Modify / Reject
 
 #### Step 5-A — Generate
 ```
-/generate-code specs/bdd/{domain}/{UC-ID}.feature
+/generate-code specs/bdd/{domain}/{UC-ID}.feature            # default — full impl or BE
+/generate-code specs/bdd/{domain}/{UC-ID}.feature --phase=ui          # FE: UI + mock API adapter
+/generate-code specs/bdd/{domain}/{UC-ID}.feature --phase=integration # FE: wire real API
 ```
+
+| Flag | When to use |
+|------|-------------|
+| *(none)* | BE, or FE when API is already live |
+| `--phase=ui` | FE: BE not ready yet — generates UI + mock adapter from System BDD contract. Tester can test FE immediately |
+| `--phase=integration` | FE: after T7 sign-off gate approved — replaces mock adapter with real API calls |
+
 1. Reads `@trace.module` and tech-design revision from feature header
 2. **Component enforcement** (frontend/mobile only):
    ```
@@ -456,9 +492,10 @@ For Testers and QA engineers, see **[TESTER_GUIDE.md](TESTER_GUIDE.md)**.
 
 Covers:
 - How to set up tester's agent using `spec-manifest.yaml` as entry point
+- Tester-facing commands: **`/report-bug`** (spec-traced bug report + layer classification) and **`/propose-scenario`** (draft a BDD scenario for an uncovered edge case)
+- The feedback handoff: both write to the shared spec repo's `feedback/` area and push → PO/Dev see them via `/sync`
 - How to read and understand the spec chain (PRD → BDD → Tech Docs) before testing
 - 6 real-world scenarios: new feature, PRD change mid-sprint, BE + Web same feature, missing BDD, regression after refactor, multi-service E2E
-- Bug reporting template with full spec context (PRD reference, BDD scenario, AC violated)
 - Bug classification by spec layer (PRD unclear vs BDD wrong vs code mismatch)
 
 ---
@@ -471,7 +508,8 @@ Covers:
 - All commands available to dev with when to use each
 - Why BDD matters: executable spec, architecture driver, living documentation
 - Understanding the trace system (`@trace.module`, `@trace.domain`, `@trace.bdd`)
-- 8 real-world scenarios: receive new PRD, generate BDD per platform (BE vs FE vs App), PRD changes mid-sprint, bug fix flow, Design Spec handoff, umbrella submodule setup, validate traces before PR
+- 8 real-world scenarios: receive new PRD, generate BDD per platform (BE vs FE vs App), PRD changes mid-sprint, API design sign-off gate, bug fix flow, Design Spec handoff, umbrella submodule setup, brownfield (existing API)
+- FE 2-phase code generation: `--phase=ui` (mock adapter, tester-ready) → `--phase=integration` (real API after sign-off)
 - Pre-PR checklist
 
 ---
@@ -482,9 +520,16 @@ For Product Owners and Business Analysts, see **[PO_GUIDE.md](PO_GUIDE.md)**.
 
 Covers:
 - All commands available to PO/BA with when to use each
-- 10 real-world scenarios: new feature, design spec, PRD revision, requirements change, domain conflict, business dictionary update, handoff to dev team, and more
+- 11 real-world scenarios: new feature, design spec, PRD revision, requirements change, domain conflict, business dictionary update, handoff to dev team, brownfield (existing API → skip T7 gate), and more
 - PRD writing rules: platform-agnostic AC, testable criteria, negative paths
 - Handoff checklist before notifying dev team
+
+---
+
+## Setup & Architecture Reference
+
+- **[SETUP_GUIDE.md](SETUP_GUIDE.md)** — step-by-step install (single-service, monorepo, umbrella), filling `CLAUDE.md` + `.agent/project-context.yaml`, domain-knowledge files.
+- **[ARCHITECTURE.md](ARCHITECTURE.md)** — how the framework is built: template→build→`core/` pipeline, step-file composition, module plug-in system, data-guard hook, directory map.
 
 ---
 
@@ -528,6 +573,7 @@ This installs the framework to `.agent/` at the umbrella root and generates a `p
 
 ### Generated project-context.yaml
 
+**Umbrella level** (`my-project-be/.agent/project-context.yaml`):
 ```yaml
 setup:
   mode: umbrella
@@ -551,13 +597,32 @@ services:                          # domain → service submodule routing
     tech_docs_dir: "order-service/specs/tech-docs"
 ```
 
+**Service level** — each submodule needs its own config (`user-service/.agent/project-context.yaml`):
+```yaml
+tech_stack:
+  language: "Java 17"
+  framework: "Spring Boot 3.2"
+  module: "java-spring"
+
+conventions:
+  test_command: "mvn test"
+  build_command: "mvn compile"
+
+paths:
+  trace_dir: ".trace"
+```
+
+> **Why two configs?** The umbrella config handles *routing* (which domain maps to which service). The service config handles *execution* — `test_command`, `build_command`, and `trace_dir` are service-specific and loaded by context-loader Step 1.6 when running `/run-tests` or `/generate-tests` from umbrella root.
+
 ### How routing works
 
 When you run a command (e.g., `/generate-bdd free-trial-specs/specs/prd/user/FEAT-01.md`):
 1. Context-loader detects domain = `user` from the PRD path
-2. Routes `specs_dir` → `user-service/specs/bdd`
-3. Routes `tech_docs_dir` → `user-service/specs/tech-docs`
-4. BDD and tech-docs are generated inside the correct service submodule
+2. **Step 1.5** routes `specs_dir` → `user-service/specs/bdd`, `tech_docs_dir` → `user-service/specs/tech-docs`. Stores `service_root = "user-service"`.
+3. **Step 1.6** loads `user-service/.agent/project-context.yaml` → overrides `conventions.test_command`, `conventions.build_command`, `paths.trace_dir` with service-specific values.
+4. BDD, tech-docs, code, and tests are generated inside the correct service submodule. `/run-tests` runs as `cd user-service && {test_command}` automatically.
+
+> **Prerequisite:** Each service submodule must have its own `.agent/project-context.yaml` with `conventions.test_command` and `conventions.build_command`. Without it, Step 1.6 falls back to umbrella defaults (which may be empty or wrong).
 
 **Key requirement:** PRD files must have `@trace.domain` in their frontmatter matching a key in the `services` config:
 
@@ -791,15 +856,21 @@ Each module ships a `stack-profile.yaml` with framework-specific layer patterns,
 | Command | Input | Output | When to use |
 |---------|-------|--------|-------------|
 | `/setup-ai-first` | — | Project structure + config files | First-time project setup |
+| `/sync` | — | Git pull + submodule update + Living Docs sync | **Daily driver** — sync project *content* (submodule code/specs) |
+| `/update-framework` | — | Refreshed `.agent/` command files from npm | **Occasionally** — upgrade the *framework itself* when a new version ships |
 | `/sync-figma-components {module}` | Module name | Updated `figma-components/{module}.md` | After Figma design system changes |
 | `/sync-figma-tokens {url?}` | Optional Figma URL | Updated `figma-tokens.md` | After design token changes |
+
+> **`/sync` vs `/update-framework` — two different things:**
+> - `/sync` updates your **project content**: pulls the latest submodule code/specs from git and refreshes the Living Docs panel. Source = your git remotes. Run often.
+> - `/update-framework` updates the **framework tooling**: refreshes `.agent/commands/`, `steps/`, `modules/` etc. to the latest published version. Source = npm registry. Run rarely. It never touches your `project-context.yaml`, `CLAUDE.md`, domain-knowledge, or `.trace/`.
 
 ### Feature lifecycle
 
 | Command | Input | Output | When to use |
 |---------|-------|--------|-------------|
 | `/define-product` | — | `specs/product-definition/*.md` | Starting any new feature |
-| `/generate-prd` | product-definition file | `specs/prd/{domain}/{slug}.md` | After define-product |
+| `/generate-prd` | product-definition file | `specs/prd/{domain}/{slug}.md` | After define-product. Add `API Source: existing` + "Existing API Contract" section for brownfield features |
 | `/refine-prd` | prd file | `.agent/review/{prd-slug}-findings.yaml` | After generate-prd |
 | `/review-context` | prd or feature file | `.agent/review/*-findings.yaml` | After PRD update; after generate-bdd |
 | `/review-context --fix` | prd or feature file | Applies all auto-fixable findings immediately | Dev quick-fix without Review Board |
@@ -809,7 +880,7 @@ Each module ships a `stack-profile.yaml` with framework-specific layer patterns,
 | `/generate-tech-docs` | feature file | `tech-docs/{domain}/{slug}-tech-design.md` | After BDD approved |
 | `/review-tech-docs` | tech-design file | `.agent/review/*-findings.yaml` | After generate-tech-docs |
 | `/review-tech-docs --resume` | tech-design file | Applies accepted findings | After reviewing in Review Board |
-| `/generate-code` | feature file | `src/...` | After tech-design approved |
+| `/generate-code` | feature file | `src/...` | After tech-design approved. Use `--phase=ui` (FE mock) or `--phase=integration` (FE real API) when BE not ready |
 | `/review-code` | — | Review report | After generate-code |
 | `/generate-tests` | feature file | `src/test/...` | After generate-code |
 | `/run-tests` | — | Test report | After generate-tests |
@@ -822,6 +893,28 @@ Each module ships a `stack-profile.yaml` with framework-specific layer patterns,
 | `/fix-bug` | — | Bug fix | When a bug is found |
 | `/debug` | — | Debug session | Deep debugging |
 | `/validate-traces {domain}` | domain name | Coverage matrix + drift report | Anytime — verify traceability |
+| `/learn {text}` | "AI does X, should Y" | Appends a guardrail to the project lessons file | When the AI repeats a mistake you want to stop |
+
+### Tester (read-only on specs)
+
+| Command | Input | Output | When to use |
+|---------|-------|--------|-------------|
+| `/report-bug {UC-ID} {desc}` | UC/TICKET + description | `{spec_repo}/feedback/bug-reports/{BUG-ID}.md` + spec context + layer classification | Tester finds a bug |
+| `/propose-scenario {UC-ID} {desc}` | UC + edge-case description | `{spec_repo}/feedback/bdd-proposals/{UC-ID}-*.md` draft Gherkin | Tester finds an edge case not covered by BDD |
+
+> Both are **read-only on canonical specs/code**. They write only to the shared spec repo's `feedback/` area and **commit + push it** there — so PO/Dev see the items on their next `/sync` (which lists newly-pulled feedback). `/report-bug` classifies the likely layer (Code/BDD/PRD/Design/Env) to route the bug; `/propose-scenario` drafts a scenario mapped to an existing PRD AC (or emits a PRD change request if the behavior is genuinely new). PO/Dev promote proposals into canonical BDD — testers never edit `.feature` directly.
+>
+> **Handoff loop:** tester `/report-bug` or `/propose-scenario` → commit+push to spec repo `feedback/` → PO/Dev `/sync` surfaces `📥 N new` → they act (`/fix-bug`, promote proposal, or update PRD). A file alone notifies no one; the commit + `/sync` surfacing is what closes the loop.
+
+### Project Lessons (self-improving guardrails)
+
+The framework accumulates a **project memory** of mistakes the AI should not repeat:
+
+- **Capture** — run `/learn "AI keeps calling repositories from controllers — must go through the service layer"`, or accept the prompt that `/review-code`, `/fix-bug`, and `/debug` show when they find a repeatable AI mistake.
+- **Store** — lessons land in `paths.lessons_file` (default `specs/domain-knowledge/lessons-learned.md`; per-service `.agent/project-lessons.md` in umbrella mode). Commit it so the whole team shares the guardrails.
+- **Apply** — context-loader **Step 6.7** loads every lesson at the start of **every** command and treats each as a hard constraint (same priority as CLAUDE.md). Generation commands check their output against matching lessons before presenting it.
+
+> This is **project memory, not model fine-tuning** — the model's weights never change. Lessons work by being injected into context on every run, which functionally stops the repeat.
 
 ---
 
@@ -834,8 +927,9 @@ Every command in `.agent/commands/` is composed of shared **step files** in `.ag
 | File | Role | Called by |
 |------|------|-----------|
 | `gate.md` | Universal entry — model check, file resolution, context load, user checkpoint | Every command |
-| `context-loader.md` | 7-step context loading sequence (stack → arch → safety → domain → UI → recap) | `gate.md` Step 2 |
+| `context-loader.md` | Multi-step context loading sequence (stack → service routing → service conventions → arch → safety → domain → UI → recap) | `gate.md` Step 2 |
 | `spawn-agent.md` | Sub-agent orchestration for large PRDs | `generate-bdd`, `generate-code`, `generate-tests` |
+| `capture-lesson.md` | Append/refine a guardrail in the project lessons file | `learn`, `review-code`, `fix-bug`, `debug` |
 | `report-footer.md` | Standard output format (status badge, artifact list, next command) | Every command |
 
 ---
@@ -866,18 +960,21 @@ Proceed? (Y/N)
 
 ---
 
-### context-loader.md — 7-Step Context Loading Sequence
+### context-loader.md — Context Loading Sequence
 
 Loads all project context into working memory, in strict priority order:
 
 | Step | Priority | What loads |
 |------|----------|-----------|
 | 1 | PROJECT-CONFIG | `project-context.yaml` → stack, conventions, domains, services, paths |
+| 1.5 | SERVICE ROUTING | *(umbrella only)* detect active domain, route `specs_dir`/`tech_docs_dir` to matching service submodule, store `service_root` |
+| 1.6 | SERVICE CONVENTIONS | *(umbrella only)* load `{service_root}/.agent/project-context.yaml` → override `test_command`, `build_command`, `paths.trace_dir` with service-specific values |
 | 2 | PROJECT-CONFIG | `.agent/modules/{module}/stack-profile.yaml` → framework-specific layer patterns |
 | 3 | **CRITICAL** | `CLAUDE.md` → architecture layers, coding standards, naming conventions |
 | 4 | SAFETY | `.agent/rules/data-protection.md` → sensitive file patterns never to access |
 | 5 | DOMAIN | `business-dictionary.md` → canonical terms + banned terms (enforced for entire session) |
 | 6 | DOMAIN | `core-entities.md` → entity catalog (field names, types, invariants, relationships) |
+| 6.7 | **GUARDRAILS** | `lessons_file` → accumulated mistakes (via `/learn`) loaded as hard constraints for this run |
 | 6-B | UI COMPONENTS | `figma-components/{module}.md` → Figma component name → code component + import path |
 | 6-C | UI TOKENS | `figma-tokens.md` → design tokens (colors, typography, spacing, radius, shadow) |
 | 7 | **RECAP** | `[CTX LOADED]` block printed to lock critical facts into working memory |
@@ -891,8 +988,10 @@ Stack      : TypeScript / React 18 / PostgreSQL
 Layers     : Controller → Facade → Service → Repository
 Ticket     : FEAT-
 Services   : 2 services: web-admin(react), api-backend(java-spring)
+Svc Root   : api-backend — conventions + trace_dir loaded from service config
 Dict       : loaded — 42 canonical terms, 8 banned terms
 Entities   : loaded — User, Order, Product
+Lessons    : loaded — 6 guardrails
 Components : loaded — web-admin (react) — 23 components mapped
 Tokens     : loaded — colors: 18, spacing: 12, typography: 6
 Status     : FULL
@@ -1028,6 +1127,7 @@ product-definition.md
 # @trace.module: react
 # @trace.prd_version: 1.2
 # @trace.bdd_version: 3
+# @trace.api_source: existing   ← brownfield: API đã tồn tại, contract lấy từ PRD
 ```
 
 ### Tags in code
@@ -1103,6 +1203,8 @@ Reads `.trace/*.tsv` — shows project-wide traceability health at a glance.
 - Search by UC/SC ID or title
 
 **Data source:** `.trace/{UC-ID}.tsv` — written by `/generate-bdd`, `/generate-code`, `/generate-tests`, updated by `/validate-traces`.
+
+**Umbrella / submodule mode:** each service submodule has its own `.trace/` dir. The panel at umbrella root reads from `{umbrella}/.trace/`, which is populated by `/validate-traces` (it aggregates from all service trace dirs). Run `/validate-traces` after each codegen session to refresh the panel. Add `.trace/` to the umbrella's `.gitignore` — it is a read-only mirror, not committed.
 
 ---
 
