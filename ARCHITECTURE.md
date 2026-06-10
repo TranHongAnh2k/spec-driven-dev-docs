@@ -222,7 +222,7 @@ spec-driven-dev/
     └── platform-guide.template.md
 ```
 
-> Build output (gitignored): `commands/*.md`, `skills/**/SKILL.md`, and `core/` (the distributable copied into a consumer's `.agent/` by `--init`). Consumer-side tester artifacts live in the shared spec repo under `feedback/bug-reports/` and `feedback/bdd-proposals/`.
+> Build output (gitignored): `commands/*.md`, `skills/**/SKILL.md`, and `core/` (the distributable copied into a consumer's `.agent/` by `--init`). Consumer-side tester artifacts live in the shared spec repo under `feedback/bug-reports/` and `feedback/bdd-proposals/`. In umbrella mode the **API contract (tech-docs)** also lives in the shared spec repo (`{spec_source}/specs/tech-docs/`) so BE and FE/App read the same contract via the spec submodule.
 
 ---
 

@@ -427,11 +427,12 @@ Dev chạy:
 
 ```
 BE dev: /generate-tech-docs auth/FT-001-UC1
-→ Output: user-service/specs/tech-docs/auth/FT-001-UC1-tech-design.md
+→ Output: free-trial-specs/specs/tech-docs/auth/FT-001-UC1-tech-design.md   ← API contract nằm trong SPEC REPO chung
 → @trace.status: draft
 → @trace.sign_off: { be_team: done, fe_team: pending, app_team: pending, sa: pending }
+→ Publish: commit + push file lên spec repo (2-layer) để FE/App `/sync` đọc được
 
-BE dev: /review-tech-docs user-service/specs/tech-docs/auth/FT-001-UC1-tech-design.md
+BE dev: /review-tech-docs free-trial-specs/specs/tech-docs/auth/FT-001-UC1-tech-design.md
 → Chạy T1–T7 (bao gồm T7 cross-team contract check)
 → Report: "Sign-off gate: 🔒 BLOCKED — pending: fe_team, app_team, sa"
 ```
@@ -490,7 +491,7 @@ Spec context:
   PRD      : specs/prd/auth/FT-001-login.md (v1.0)
   BDD      : free-trial-be/specs/bdd/auth/FT-001-login.feature
              → Scenario: "Lock account after 5 failed attempts"
-  Tech Doc : free-trial-be/specs/tech-docs/auth/FT-001-auth-api.md
+  Tech Doc : free-trial-specs/specs/tech-docs/auth/FT-001-auth-api.md
 
 AC bị vi phạm:
   AC3: "Sai password 5 lần liên tiếp → khoá tài khoản 30 phút"
@@ -691,14 +692,14 @@ services:
     path: "mass-product-be"
     module: "NestJS"
     specs_dir: "mass-product-be/specs/bdd"
-    tech_docs_dir: "mass-product-be/specs/tech-docs"
   web:
     path: "mass-product-web"
     module: "NextJS"
     specs_dir: "mass-product-web/specs/bdd"
-    tech_docs_dir: "mass-product-web/specs/tech-docs"
 ```
 
+> **Tech-docs (API contract):** không khai trong `services` — context-loader tự route `tech_docs_dir → mass-product-spec/specs/tech-docs` (spec repo chung). BE generate xong → commit + push lên spec repo; FE/App `/sync` để đọc.
+>
 > **Bắt buộc:** Mỗi service submodule cũng cần file `.agent/project-context.yaml` riêng. Framework đọc file này (context-loader Step 1.6) để lấy đúng `test_command` và `build_command` khi `/run-tests` hoặc `/generate-tests` chạy từ umbrella root.
 
 **project-context.yaml của từng service submodule:**

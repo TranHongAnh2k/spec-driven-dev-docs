@@ -549,7 +549,7 @@ my-project-umbrella/          ← Agent opens here (umbrella)
 └── web-app/                  ← submodule: FE app
 ```
 
-The agent reads PRDs from the spec submodule and generates BDD/tech-docs/code into each service submodule based on the active domain.
+The agent reads PRDs from the spec submodule and generates BDD + code into each service submodule based on the active domain; tech-docs (the API contract) are written to the shared spec submodule so every umbrella reads the same contract.
 
 ### Setup
 
@@ -582,6 +582,7 @@ setup:
 paths:
   prd_dir:         "free-trial-specs/specs/prd"    # auto-derived from spec_source
   design_spec_dir: "free-trial-specs/specs/design-spec"
+  tech_docs_dir:   "free-trial-specs/specs/tech-docs"  # API contract — shared, auto-derived from spec_source
   # ... other spec paths also auto-derived
 
 services:                          # domain → service submodule routing
@@ -589,12 +590,10 @@ services:                          # domain → service submodule routing
     path: "user-service"
     module: "java-spring"
     specs_dir: "user-service/specs/bdd"
-    tech_docs_dir: "user-service/specs/tech-docs"
   order:
     path: "order-service"
     module: "java-spring"
     specs_dir: "order-service/specs/bdd"
-    tech_docs_dir: "order-service/specs/tech-docs"
 ```
 
 **Service level** — each submodule needs its own config (`user-service/.agent/project-context.yaml`):
@@ -618,9 +617,9 @@ paths:
 
 When you run a command (e.g., `/generate-bdd free-trial-specs/specs/prd/user/FEAT-01.md`):
 1. Context-loader detects domain = `user` from the PRD path
-2. **Step 1.5** routes `specs_dir` → `user-service/specs/bdd`, `tech_docs_dir` → `user-service/specs/tech-docs`. Stores `service_root = "user-service"`.
+2. **Step 1.5** routes `specs_dir` → `user-service/specs/bdd` and (in shared-spec setups) auto-routes `tech_docs_dir` → `free-trial-specs/specs/tech-docs`. Stores `service_root = "user-service"`.
 3. **Step 1.6** loads `user-service/.agent/project-context.yaml` → overrides `conventions.test_command`, `conventions.build_command`, `paths.trace_dir` with service-specific values.
-4. BDD, tech-docs, code, and tests are generated inside the correct service submodule. `/run-tests` runs as `cd user-service && {test_command}` automatically.
+4. BDD, code, and tests are generated inside the correct service submodule (tech-docs go to the shared spec submodule). `/run-tests` runs as `cd user-service && {test_command}` automatically.
 
 > **Prerequisite:** Each service submodule must have its own `.agent/project-context.yaml` with `conventions.test_command` and `conventions.build_command`. Without it, Step 1.6 falls back to umbrella defaults (which may be empty or wrong).
 
@@ -641,7 +640,7 @@ When you run a command (e.g., `/generate-bdd free-trial-specs/specs/prd/user/FEA
 |-----------|---------------|-------------|
 | PRD, Design Spec, Product Definition | Spec submodule (`my-project-specs/`) | PO's team |
 | BDD feature files | Each service submodule (`user-service/specs/bdd/`) | Dev team |
-| Tech docs | Each service submodule (`user-service/specs/tech-docs/`) | Dev team |
+| Tech docs (API contract) | **Spec submodule** (`free-trial-specs/specs/tech-docs/`) | BE dev → push to spec repo |
 | Code | Each service submodule (`user-service/src/`) | Dev team |
 
 ### Committing generated files

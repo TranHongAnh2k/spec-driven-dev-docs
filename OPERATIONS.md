@@ -81,13 +81,13 @@ FE/App dev (umbrella repo)
         my-project-specs/specs/design-spec/    ← Design Spec của PO
         my-project-specs/specs/bdd/{domain}/web/   ← Web BDD của PO
         my-project-specs/specs/bdd/{domain}/app/   ← App BDD của PO
-  VIẾT: mass-product-web/specs/tech-docs/    ← Tech Docs
+  VIẾT: my-project-specs/specs/tech-docs/    ← Tech Docs
         mass-product-web/src/                ← Source code
 
 BE dev (umbrella repo)
   ĐỌC:  my-project-specs/specs/prd/           ← PRD của PO
         my-project-specs/specs/bdd/{domain}/system/  ← System BDD của PO
-  VIẾT: user-service/specs/tech-docs/        ← Tech Docs
+  VIẾT: my-project-specs/specs/tech-docs/        ← Tech Docs
         user-service/src/                    ← Source code
 ```
 
@@ -160,16 +160,14 @@ services:
   auth:                              # ← phải khớp @trace.domain trong PRD
     path: "mass-product-web"         # ← tên thư mục submodule thực tế
     module: "nextjs"
-    specs_dir: "mass-product-web/specs/bdd"
-    tech_docs_dir: "mass-product-web/specs/tech-docs"
-  payment:
+    specs_dir: "mass-product-web/specs/bdd"  payment:
     path: "mass-product-web"
     module: "nextjs"
-    specs_dir: "mass-product-web/specs/bdd"
-    tech_docs_dir: "mass-product-web/specs/tech-docs"
-```
+    specs_dir: "mass-product-web/specs/bdd"```
 
 > **Lưu ý:** Nếu nhiều domain đều map vào cùng 1 service (như web app), tất cả đều trỏ về `mass-product-web`.
+>
+> **Tech-docs (API contract):** không khai trong `services` — context-loader tự route `tech_docs_dir → {spec_source}/specs/tech-docs` (spec repo chung). BE generate xong → commit + push lên spec repo; FE/App `/sync` để đọc.
 
 **Mở Claude Code tại `my-project-web/` và chạy:**
 ```
@@ -208,19 +206,13 @@ services:
   user:                              # domain "user" → user-service submodule
     path: "user-service"
     module: "java-spring"
-    specs_dir: "user-service/specs/bdd"
-    tech_docs_dir: "user-service/specs/tech-docs"
-  order:
+    specs_dir: "user-service/specs/bdd"  order:
     path: "order-service"
     module: "java-spring"
-    specs_dir: "order-service/specs/bdd"
-    tech_docs_dir: "order-service/specs/tech-docs"
-  payment:
+    specs_dir: "order-service/specs/bdd"  payment:
     path: "payment-service"
     module: "golang"
-    specs_dir: "payment-service/specs/bdd"
-    tech_docs_dir: "payment-service/specs/tech-docs"
-```
+    specs_dir: "payment-service/specs/bdd"```
 
 > **Bắt buộc:** Mỗi service submodule cũng cần file `.agent/project-context.yaml` riêng chứa `conventions.test_command`. Framework đọc file này (Step 1.6) để chạy test đúng lệnh từ đúng thư mục khi `/run-tests` được gọi từ umbrella root.
 
@@ -324,7 +316,7 @@ push to spec repo ──────────────→ git submodule up
                                          │    [all sign-offs done] │
                                          │    tech docs: approved  │
                                          │                         │
-                                 /generate-tech-docs        /generate-code
+                                                            /generate-code
                                 /generate-code --phase=int   /generate-tests
                                 (wire real API)              /review-code
                                  /generate-tests              /run-tests
@@ -472,8 +464,9 @@ git push
 ```bash
 # Bước 5a: commit vào service submodule
 cd mass-product-web        # hoặc user-service, v.v.
-git add specs/bdd/ specs/tech-docs/ src/
-git commit -m "feat(FEAT-01): add login BDD, tech-docs, implementation"
+git add specs/bdd/ src/
+git commit -m "feat(FEAT-01): add login BDD, implementation"
+# tech-docs (API contract) → commit + push riêng trong spec submodule
 git push origin main
 
 # Bước 5b: update pointer ở umbrella
@@ -813,19 +806,13 @@ services:
   auth:
     path: "mass-product-web"       # ← cùng service
     module: "nextjs"
-    specs_dir: "mass-product-web/specs/bdd"
-    tech_docs_dir: "mass-product-web/specs/tech-docs"
-  payment:
+    specs_dir: "mass-product-web/specs/bdd"  payment:
     path: "mass-product-web"       # ← cùng service
     module: "nextjs"
-    specs_dir: "mass-product-web/specs/bdd"
-    tech_docs_dir: "mass-product-web/specs/tech-docs"
-  loyalty:
+    specs_dir: "mass-product-web/specs/bdd"  loyalty:
     path: "mass-product-web"       # ← cùng service
     module: "nextjs"
-    specs_dir: "mass-product-web/specs/bdd"
-    tech_docs_dir: "mass-product-web/specs/tech-docs"
-```
+    specs_dir: "mass-product-web/specs/bdd"```
 
 Tất cả domain đều route vào cùng 1 service — BDD phân biệt nhau bằng thư mục con (`specs/bdd/auth/`, `specs/bdd/payment/`).
 

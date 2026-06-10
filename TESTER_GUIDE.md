@@ -86,8 +86,8 @@ features:
     prd: "specs/prd/auth/FT-001-login.md"
     pdd: "specs/product-definition/auth/FT-001-def.md"
     tech_docs:
-      be:  "free-trial-be/specs/tech-docs/auth/FT-001-auth-api.md"
-      web: "free-trial-web/free-trial-specs/free-trial-web/tech-docs/auth/FT-001-login-web.md"
+      be:  "free-trial-specs/specs/tech-docs/auth/FT-001-auth-api.md"
+      web: "free-trial-specs/specs/tech-docs/auth/FT-001-login-web.md"
     bdd:
       be:  "free-trial-be/specs/bdd/auth/FT-001-login.feature"
       web: "free-trial-web/free-trial-specs/free-trial-web/bdd/auth/FT-001-login-web.feature"
@@ -460,9 +460,9 @@ FT-042:
   status: approved
   prd: "specs/prd/payment/FT-042-checkout.md"
   tech_docs:
-    be:  "free-trial-be/specs/tech-docs/payment/FT-042-checkout-api.md"
-    web: "free-trial-web/.../tech-docs/payment/FT-042-checkout-web.md"
-    app: "free-trial-app/specs/tech-docs/payment/FT-042-checkout-app.md"
+    be:  "free-trial-specs/specs/tech-docs/payment/FT-042-checkout-api.md"
+    web: "free-trial-specs/specs/tech-docs/payment/FT-042-checkout-web.md"
+    app: "free-trial-specs/specs/tech-docs/payment/FT-042-checkout-app.md"
   bdd:
     be:  "free-trial-be/specs/bdd/payment/FT-042-checkout.feature"
     web: "free-trial-web/.../bdd/payment/FT-042-checkout-web.feature"
@@ -575,7 +575,7 @@ Spec context:
   PRD      : specs/prd/auth/FT-001-login.md (v1.0)
   BDD      : free-trial-be/specs/bdd/auth/FT-001-login.feature
              → Scenario: "Lock account after 5 failed attempts"
-  Tech Doc : free-trial-be/specs/tech-docs/auth/FT-001-auth-api.md
+  Tech Doc : free-trial-specs/specs/tech-docs/auth/FT-001-auth-api.md
 
 AC bị vi phạm:
   AC3: "Sai password 5 lần liên tiếp → khoá tài khoản 30 phút"

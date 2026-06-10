@@ -372,7 +372,6 @@ services:
     path: "loyalty-service"
     module: "java-spring"
     specs_dir: "loyalty-service/specs/bdd"
-    tech_docs_dir: "loyalty-service/specs/tech-docs"
 ```
 
 **Bước 3 — Viết PRD bình thường:**

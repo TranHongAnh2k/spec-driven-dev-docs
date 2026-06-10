@@ -130,7 +130,7 @@ npx @anhth2/spec-driven-dev-plugin --init \
 |-----------|---------------|-----------|
 | PRD, Design Spec | Spec submodule | PO team |
 | BDD feature files | Service submodule (`user-service/specs/bdd/`) | Dev team |
-| Tech docs | Service submodule (`user-service/specs/tech-docs/`) | Dev team |
+| Tech docs (API contract) | **Spec submodule** (`{spec_source}/specs/tech-docs/`) | BE dev → commit + push lên spec repo |
 | Source code | Service submodule (`user-service/src/`) | Dev team |
 
 ### Routing tự động
@@ -173,14 +173,14 @@ services:
     path: "user-service"                  # ← tên thư mục submodule thực tế
     module: "java-spring"
     specs_dir: "user-service/specs/bdd"
-    tech_docs_dir: "user-service/specs/tech-docs"
   order:
     path: "order-service"
     module: "java-spring"
     specs_dir: "order-service/specs/bdd"
-    tech_docs_dir: "order-service/specs/tech-docs"
 ```
 
+> **Tech-docs (API contract):** không cần khai trong `services` — context-loader tự route `tech_docs_dir → {spec_source}/specs/tech-docs` (spec repo chung) để FE/App đọc được qua spec submodule. Chỉ giữ `specs_dir` per-service cho BDD.
+>
 > **Quan trọng — domain key phải khớp với `@trace.domain` trong PRD file:**
 > Khi PO viết PRD, file sẽ có header như:
 > ```
@@ -261,17 +261,18 @@ git submodule update --remote my-project-specs
 /review-context my-project-specs/specs/prd/user/FEAT-01-prd.md
 /generate-bdd   my-project-specs/specs/prd/user/FEAT-01-prd.md
 /generate-tech-docs user-service/specs/bdd/user/FEAT-01.feature
-/generate-code  user-service/specs/tech-docs/user/FEAT-01-tech-design.md
+/generate-code  user-service/specs/bdd/user/FEAT-01.feature   # tech-docs (contract) đọc từ spec repo
 ```
 
 **Commit files sau khi generate:**
 ```bash
-# BDD/tech-docs/code nằm trong service submodule → commit 2 tầng
+# BDD + code nằm trong service submodule → commit 2 tầng.
+# (tech-docs/API contract nằm trong spec repo — BE push riêng lên spec submodule)
 
 # Bước 1: commit trong service submodule
 cd user-service
-git add specs/bdd/ specs/tech-docs/ src/
-git commit -m "feat(FEAT-01): add BDD, tech-docs, and implementation"
+git add specs/bdd/ src/
+git commit -m "feat(FEAT-01): add BDD and implementation"
 git push
 
 # Bước 2: update pointer ở umbrella
